@@ -4,7 +4,6 @@ on:
   pull_request_review:
     types:
       - submitted
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,7 +15,6 @@ concurrency:
 
 jobs:
   admin_approval_check:
-    if: github.event.review.state == 'approved' && github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     outputs:
       is_admin: ${{ steps.check.outputs.is_admin }}
@@ -33,6 +31,7 @@ jobs:
             const reviewer = context.payload.review.user.login;
             const author = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
+            const reviewState = (context.payload.review.state || "").toLowerCase();
 
             async function getPermission(username) {
               try {
@@ -53,7 +52,7 @@ jobs:
             const reviewerPermission = await getPermission(reviewer);
             const authorPermission = await getPermission(author);
             const authorIsAdmin = authorPermission === "admin";
-            const reviewerIsAdmin = reviewerPermission === "admin";
+            const reviewerIsAdmin = reviewState === "approved" && reviewerPermission === "admin";
             const isAdmin = authorIsAdmin || reviewerIsAdmin;
 
             core.info(`PR author ${author} permission: ${authorPermission}`);
@@ -64,7 +63,7 @@ jobs:
             core.setOutput("author_is_admin", authorIsAdmin ? "true" : "false");
 
             if (!isAdmin) {
-              core.warning(`Skipping: PR author is not admin and reviewer ${reviewer} is not admin.`);
+              core.warning(`Skipping: PR author is not admin and this review is not an admin approval.`);
             }
 
   dotnet_tests:
