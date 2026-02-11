@@ -1,4 +1,5 @@
 #include "atomic_ops.h"
+#include <stddef.h>
 
 void oaf_atomic_i64_init(OafAtomicI64* atomic_value, int64_t initial_value)
 {
