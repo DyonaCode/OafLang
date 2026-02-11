@@ -22,6 +22,7 @@ jobs:
       is_admin: ${{ steps.check.outputs.is_admin }}
       pr_number: ${{ steps.check.outputs.pr_number }}
       head_sha: ${{ steps.check.outputs.head_sha }}
+      author_is_admin: ${{ steps.check.outputs.author_is_admin }}
     steps:
       - name: Verify reviewer is admin
         id: check
@@ -30,30 +31,40 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const reviewer = context.payload.review.user.login;
+            const author = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
 
-            let permission = "none";
-            try {
-              const permissionResult = await github.rest.repos.getCollaboratorPermissionLevel({
-                owner,
-                repo,
-                username: reviewer
-              });
-              permission = permissionResult.data.permission;
-            } catch (error) {
-              if (error.status !== 404) {
-                throw error;
+            async function getPermission(username) {
+              try {
+                const permissionResult = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner,
+                  repo,
+                  username
+                });
+                return permissionResult.data.permission;
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+                return "none";
               }
             }
-            const isAdmin = permission === "admin";
 
-            core.info(`Reviewer ${reviewer} permission: ${permission}`);
+            const reviewerPermission = await getPermission(reviewer);
+            const authorPermission = await getPermission(author);
+            const authorIsAdmin = authorPermission === "admin";
+            const reviewerIsAdmin = reviewerPermission === "admin";
+            const isAdmin = authorIsAdmin || reviewerIsAdmin;
+
+            core.info(`PR author ${author} permission: ${authorPermission}`);
+            core.info(`Reviewer ${reviewer} permission: ${reviewerPermission}`);
             core.setOutput("is_admin", isAdmin ? "true" : "false");
             core.setOutput("pr_number", String(prNumber));
             core.setOutput("head_sha", context.payload.pull_request.head.sha);
+            core.setOutput("author_is_admin", authorIsAdmin ? "true" : "false");
 
             if (!isAdmin) {
-              core.warning(`Skipping: reviewer ${reviewer} is not an admin.`);
+              core.warning(`Skipping: PR author is not admin and reviewer ${reviewer} is not admin.`);
             }
 
   dotnet_tests:
@@ -133,6 +144,7 @@ jobs:
             const { owner, repo } = context.repo;
             const prNumber = Number("${{ needs.admin_approval_check.outputs.pr_number }}");
             const expectedHeadSha = "${{ needs.admin_approval_check.outputs.head_sha }}";
+            const authorIsAdmin = "${{ needs.admin_approval_check.outputs.author_is_admin }}" === "true";
 
             const pr = await github.rest.pulls.get({
               owner,
@@ -150,42 +162,44 @@ jobs:
               return;
             }
 
-            const reviews = await github.paginate(github.rest.pulls.listReviews, {
-              owner,
-              repo,
-              pull_number: prNumber,
-              per_page: 100
-            });
+            if (!authorIsAdmin) {
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner,
+                repo,
+                pull_number: prNumber,
+                per_page: 100
+              });
 
-            const approvedUsers = [...new Set(
-              reviews
-                .filter((review) => review.state === "APPROVED")
-                .map((review) => review.user.login)
-            )];
+              const approvedUsers = [...new Set(
+                reviews
+                  .filter((review) => review.state === "APPROVED")
+                  .map((review) => review.user.login)
+              )];
 
-            let hasAdminApproval = false;
-            for (const username of approvedUsers) {
-              try {
-                const permissionResult = await github.rest.repos.getCollaboratorPermissionLevel({
-                  owner,
-                  repo,
-                  username
-                });
+              let hasAdminApproval = false;
+              for (const username of approvedUsers) {
+                try {
+                  const permissionResult = await github.rest.repos.getCollaboratorPermissionLevel({
+                    owner,
+                    repo,
+                    username
+                  });
 
-                if (permissionResult.data.permission === "admin") {
-                  hasAdminApproval = true;
-                  break;
-                }
-              } catch (error) {
-                if (error.status !== 404) {
-                  throw error;
+                  if (permissionResult.data.permission === "admin") {
+                    hasAdminApproval = true;
+                    break;
+                  }
+                } catch (error) {
+                  if (error.status !== 404) {
+                    throw error;
+                  }
                 }
               }
-            }
 
-            if (!hasAdminApproval) {
-              core.setFailed(`PR #${prNumber} no longer has an admin approval.`);
-              return;
+              if (!hasAdminApproval) {
+                core.setFailed(`PR #${prNumber} no longer has an admin approval.`);
+                return;
+              }
             }
 
             await github.rest.pulls.merge({
