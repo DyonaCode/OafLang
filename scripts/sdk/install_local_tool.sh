@@ -8,9 +8,9 @@ TOOL_PATH="${ROOT_DIR}/.oaf/sdk-tools"
 
 mkdir -p "${NUGET_DIR}" "${TOOL_PATH}"
 
-dotnet pack "${ROOT_DIR}/OafLang.csproj" --configuration Release -p:Version="${VERSION}" >/dev/null
+dotnet pack "${ROOT_DIR}/Oaf.csproj" --configuration Release -p:Version="${VERSION}" >/dev/null
 
-PACKAGE_ID="OafLang.Sdk"
+PACKAGE_ID="Oaf.Sdk"
 
 if dotnet tool list --tool-path "${TOOL_PATH}" | awk '{print $1}' | grep -Fxq "${PACKAGE_ID}"; then
     dotnet tool update "${PACKAGE_ID}" \

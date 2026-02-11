@@ -1,8 +1,8 @@
 using System.Text;
-using OafLang.Frontend.Compiler.AST;
-using OafLang.Frontend.Compiler.Parser;
+using Oaf.Frontend.Compiler.AST;
+using Oaf.Frontend.Compiler.Parser;
 
-namespace OafLang.Tooling.Documentation;
+namespace Oaf.Tooling.Documentation;
 
 public static class OafDocumentationGenerator
 {
@@ -117,7 +117,7 @@ public static class OafDocumentationGenerator
         Directory.CreateDirectory(targetDirectory);
 
         var indexBuilder = new StringBuilder();
-        indexBuilder.AppendLine("# OafLang Documentation Index");
+        indexBuilder.AppendLine("# Oaf Documentation Index");
         indexBuilder.AppendLine();
 
         foreach (var file in files)

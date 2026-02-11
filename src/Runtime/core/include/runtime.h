@@ -55,7 +55,7 @@ OafGarbageCollector* oaf_runtime_gc(OafRuntime* runtime);
 OafTypeRegistry* oaf_runtime_type_registry(OafRuntime* runtime);
 const OafRuntimeError* oaf_runtime_last_error(const OafRuntime* runtime);
 
-int oaflang_runtime_version(void);
+int oaf_runtime_version(void);
 
 #ifdef __cplusplus
 }

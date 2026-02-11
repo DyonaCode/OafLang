@@ -1,12 +1,12 @@
-using OafLang.Frontend.Compiler.CodeGen.Bytecode;
-using OafLang.Frontend.Compiler.Diagnostics;
-using OafLang.Frontend.Compiler.Driver;
-using OafLang.Tests.Framework;
-using OafLang.Tooling.Documentation;
-using OafLang.Tooling.Formatting;
-using OafLang.Tooling.PackageManagement;
+using Oaf.Frontend.Compiler.CodeGen.Bytecode;
+using Oaf.Frontend.Compiler.Diagnostics;
+using Oaf.Frontend.Compiler.Driver;
+using Oaf.Tests.Framework;
+using Oaf.Tooling.Documentation;
+using Oaf.Tooling.Formatting;
+using Oaf.Tooling.PackageManagement;
 
-namespace OafLang.Tests.Integration;
+namespace Oaf.Tests.Integration;
 
 public static class CompilerIntegrationTests
 {
@@ -64,7 +64,7 @@ public static class CompilerIntegrationTests
 
     private static void ToolingPipelineGeneratesDocsAndInstallsPackages()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"oaflang_integration_{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"oaf_integration_{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
 
         try

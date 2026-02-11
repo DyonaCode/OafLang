@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace OafLang.Tooling.PackageManagement;
+namespace Oaf.Tooling.PackageManagement;
 
 public readonly record struct OafPackageDependency(string Name, string Version)
 {
@@ -40,7 +40,7 @@ public static class OafPackageManager
         File.WriteAllLines(
             fullPath,
             [
-                "# OafLang package manifest",
+                "# Oaf package manifest",
                 "# One dependency per line in the format name@version"
             ]);
 
@@ -232,7 +232,7 @@ public static class OafPackageManager
         var fullPath = Path.GetFullPath(manifestPath);
         var lines = new List<string>
         {
-            "# OafLang package manifest",
+            "# Oaf package manifest",
             "# One dependency per line in the format name@version"
         };
 
@@ -248,7 +248,7 @@ public static class OafPackageManager
         var sorted = dependencies.OrderBy(static dep => dep.Name, StringComparer.Ordinal).ToArray();
 
         var builder = new StringBuilder();
-        builder.AppendLine("# OafLang package lock");
+        builder.AppendLine("# Oaf package lock");
         builder.AppendLine("format=1");
         builder.AppendLine($"dependency_count={sorted.Length}");
 

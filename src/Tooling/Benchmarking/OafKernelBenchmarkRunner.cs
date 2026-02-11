@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using OafLang.Frontend.Compiler.CodeGen.Bytecode;
-using OafLang.Frontend.Compiler.Driver;
+using Oaf.Frontend.Compiler.CodeGen.Bytecode;
+using Oaf.Frontend.Compiler.Driver;
 
-namespace OafLang.Tooling.Benchmarking;
+namespace Oaf.Tooling.Benchmarking;
 
 public readonly record struct OafKernelBenchmarkResult(
     string Language,
@@ -105,7 +105,7 @@ public static class OafKernelBenchmarkRunner
         stopwatch.Stop();
         var totalMs = stopwatch.Elapsed.TotalMilliseconds;
         var meanMs = totalMs / iterations;
-        return new OafKernelBenchmarkResult("oaflang", algorithm, iterations, totalMs, meanMs, checksum);
+        return new OafKernelBenchmarkResult("oaf", algorithm, iterations, totalMs, meanMs, checksum);
     }
 
     private static OafKernelBenchmarkResult RunTieredVmNative(string algorithm, BytecodeProgram program, int iterations)
@@ -150,7 +150,7 @@ public static class OafKernelBenchmarkRunner
         stopwatch.Stop();
         var totalMs = stopwatch.Elapsed.TotalMilliseconds;
         var meanMs = totalMs / iterations;
-        return new OafKernelBenchmarkResult("oaflang", algorithm, iterations, totalMs, meanMs, checksum);
+        return new OafKernelBenchmarkResult("oaf", algorithm, iterations, totalMs, meanMs, checksum);
     }
 
     private static ulong ConvertToUInt64(object? value)

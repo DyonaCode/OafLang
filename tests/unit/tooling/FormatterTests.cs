@@ -1,7 +1,7 @@
-using OafLang.Tests.Framework;
-using OafLang.Tooling.Formatting;
+using Oaf.Tests.Framework;
+using Oaf.Tooling.Formatting;
 
-namespace OafLang.Tests.Unit.Tooling;
+namespace Oaf.Tests.Unit.Tooling;
 
 public static class FormatterTests
 {

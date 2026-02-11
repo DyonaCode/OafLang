@@ -1,4 +1,4 @@
-# OafLang Documentation
+# Oaf Documentation
 
 This folder contains the actively maintained project documentation for the current compiler/runtime implementation.
 
@@ -7,7 +7,7 @@ This folder contains the actively maintained project documentation for the curre
 - `LanguageSpecification.md`
   Canonical language specification for the currently implemented syntax and semantics.
 - `guides/`
-  Step-by-step programming guides for writing and running OafLang programs.
+  Step-by-step programming guides for writing and running Oaf programs.
 - `reference/`
   API-style reference docs for CLI commands, runtime modules, and standard library modules.
 - `../examples/`

@@ -28,15 +28,15 @@ oaf clean -o ./out/oaf
 ```bash
 cmake -S . -B out/cmake-build
 cmake --build out/cmake-build
-./out/cmake-build/oaflang_error_smoke
-./out/cmake-build/oaflang_memory_smoke
-./out/cmake-build/oaflang_runtime_smoke
-./out/cmake-build/oaflang_types_smoke
-./out/cmake-build/oaflang_concurrency_smoke
-./out/cmake-build/oaflang_ffi_smoke
-./out/cmake-build/oaflang_collections_smoke
-./out/cmake-build/oaflang_stdlib_smoke
-./out/cmake-build/oaflang_advanced_concurrency_smoke
+./out/cmake-build/oaf_error_smoke
+./out/cmake-build/oaf_memory_smoke
+./out/cmake-build/oaf_runtime_smoke
+./out/cmake-build/oaf_types_smoke
+./out/cmake-build/oaf_concurrency_smoke
+./out/cmake-build/oaf_ffi_smoke
+./out/cmake-build/oaf_collections_smoke
+./out/cmake-build/oaf_stdlib_smoke
+./out/cmake-build/oaf_advanced_concurrency_smoke
 ```
 
 ## Repository Conventions

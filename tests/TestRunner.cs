@@ -1,14 +1,14 @@
-using OafLang.Tests.Unit.Bytecode;
-using OafLang.Tests.Unit.Benchmark;
-using OafLang.Tests.Unit.CodeGen;
-using OafLang.Tests.Integration;
-using OafLang.Tests.Unit.Lexer;
-using OafLang.Tests.Unit.Ownership;
-using OafLang.Tests.Unit.Parser;
-using OafLang.Tests.Unit.Tooling;
-using OafLang.Tests.Unit.TypeChecker;
+using Oaf.Tests.Unit.Bytecode;
+using Oaf.Tests.Unit.Benchmark;
+using Oaf.Tests.Unit.CodeGen;
+using Oaf.Tests.Integration;
+using Oaf.Tests.Unit.Lexer;
+using Oaf.Tests.Unit.Ownership;
+using Oaf.Tests.Unit.Parser;
+using Oaf.Tests.Unit.Tooling;
+using Oaf.Tests.Unit.TypeChecker;
 
-namespace OafLang.Tests;
+namespace Oaf.Tests;
 
 public static class TestRunner
 {

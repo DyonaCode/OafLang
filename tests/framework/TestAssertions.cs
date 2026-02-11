@@ -1,4 +1,4 @@
-namespace OafLang.Tests.Framework;
+namespace Oaf.Tests.Framework;
 
 public static class TestAssertions
 {

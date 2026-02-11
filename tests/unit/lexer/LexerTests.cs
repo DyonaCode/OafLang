@@ -1,7 +1,7 @@
-using OafLang.Frontend.Compiler.Lexer;
-using OafLang.Tests.Framework;
+using Oaf.Frontend.Compiler.Lexer;
+using Oaf.Tests.Framework;
 
-namespace OafLang.Tests.Unit.Lexer;
+namespace Oaf.Tests.Unit.Lexer;
 
 public static class LexerTests
 {

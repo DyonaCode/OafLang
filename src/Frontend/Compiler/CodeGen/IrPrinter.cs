@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace OafLang.Frontend.Compiler.CodeGen;
+namespace Oaf.Frontend.Compiler.CodeGen;
 
 public static class IrPrinter
 {

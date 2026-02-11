@@ -1,4 +1,4 @@
-# OafLang Language Specification (Implemented Subset)
+# Oaf Language Specification (Implemented Subset)
 
 This specification describes the language features currently implemented in the compiler/runtime in this repository.
 

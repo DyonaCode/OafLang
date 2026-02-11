@@ -1,6 +1,6 @@
-# Announcing OafLang v0.1.0
+# Announcing Oaf v0.1.0
 
-OafLang v0.1.0 is now available as the first consolidated milestone release.
+Oaf v0.1.0 is now available as the first consolidated milestone release.
 
 This release delivers the language front end (lexer, parser, type checker), ownership and lifetime analysis, IR and bytecode generation, runtime subsystem scaffolding, and a broad initial standard library. It also includes practical developer tooling for package management, formatting, documentation generation, and benchmarking.
 

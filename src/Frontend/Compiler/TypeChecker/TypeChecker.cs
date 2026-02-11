@@ -1,9 +1,9 @@
-using OafLang.Frontend.Compiler.AST;
-using OafLang.Frontend.Compiler.Diagnostics;
-using OafLang.Frontend.Compiler.Lexer;
-using OafLang.Frontend.Compiler.Symbols;
+using Oaf.Frontend.Compiler.AST;
+using Oaf.Frontend.Compiler.Diagnostics;
+using Oaf.Frontend.Compiler.Lexer;
+using Oaf.Frontend.Compiler.Symbols;
 
-namespace OafLang.Frontend.Compiler.TypeChecker;
+namespace Oaf.Frontend.Compiler.TypeChecker;
 
 public sealed class TypeChecker
 {

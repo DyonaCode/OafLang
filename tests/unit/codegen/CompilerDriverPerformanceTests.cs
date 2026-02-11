@@ -1,7 +1,7 @@
-using OafLang.Frontend.Compiler.Driver;
-using OafLang.Tests.Framework;
+using Oaf.Frontend.Compiler.Driver;
+using Oaf.Tests.Framework;
 
-namespace OafLang.Tests.Unit.CodeGen;
+namespace Oaf.Tests.Unit.CodeGen;
 
 public static class CompilerDriverPerformanceTests
 {

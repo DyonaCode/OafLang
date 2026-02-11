@@ -1,4 +1,4 @@
-# OafLang Examples
+# Oaf Examples
 
 This folder contains tested example programs for the implemented compiler/runtime subset.
 

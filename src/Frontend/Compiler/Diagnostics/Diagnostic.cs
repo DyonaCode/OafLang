@@ -1,4 +1,4 @@
-namespace OafLang.Frontend.Compiler.Diagnostics;
+namespace Oaf.Frontend.Compiler.Diagnostics;
 
 public enum DiagnosticSeverity
 {

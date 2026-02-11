@@ -1,8 +1,8 @@
-using OafLang.Frontend.Compiler.AST;
-using OafLang.Frontend.Compiler.Diagnostics;
-using OafLang.Frontend.Compiler.Lexer;
+using Oaf.Frontend.Compiler.AST;
+using Oaf.Frontend.Compiler.Diagnostics;
+using Oaf.Frontend.Compiler.Lexer;
 
-namespace OafLang.Frontend.Compiler.Ownership;
+namespace Oaf.Frontend.Compiler.Ownership;
 
 public sealed class OwnershipAnalyzer
 {

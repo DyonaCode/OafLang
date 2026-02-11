@@ -57,7 +57,7 @@ Materialize `.oaf/packages/*` and generate `packages.lock`.
 ## Documentation Generator
 
 ### `--gen-docs <file-or-directory> [--out <outputPath>]`
-Generate markdown documentation from OafLang source.
+Generate markdown documentation from Oaf source.
 
 ## Formatter
 
@@ -70,14 +70,14 @@ Generate markdown documentation from OafLang source.
 ## Benchmarks
 
 ### `--benchmark [iterations] [--max-mean-ratio <value>] [--fail-on-regression]`
-Run benchmark suite and emit OafLang vs C# baseline report.
+Run benchmark suite and emit Oaf vs C# baseline report.
 
 ```bash
 dotnet run -- --benchmark 200 --max-mean-ratio 5.0 --fail-on-regression
 ```
 
 ### `--benchmark-kernels [--iterations <n>] [--sum-n <n>] [--prime-n <n>] [--matrix-n <n>] [--native|--tiered]`
-Run OafLang algorithm kernels (`sum_xor`, `prime_trial`, `affine_grid`) in the bytecode VM and emit CSV output.
+Run Oaf algorithm kernels (`sum_xor`, `prime_trial`, `affine_grid`) in the bytecode VM and emit CSV output.
 
 ```bash
 dotnet run -- --benchmark-kernels --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
@@ -97,7 +97,7 @@ dotnet run -- --benchmark-kernels --tiered --iterations 5 --sum-n 5000000 --prim
 
 ## Native Comparison Script
 
-Run C, Rust, and OafLang benchmark kernels with shared workload settings:
+Run C, Rust, and Oaf benchmark kernels with shared workload settings:
 
 ```bash
 ./scripts/benchmark/run_c_rust_benchmarks.sh --iterations 5 --oaf-mode both --oaf-cli ./.oaf/sdk-tools/oaf

@@ -1,4 +1,4 @@
-namespace OafLang.Frontend.Compiler.AST;
+namespace Oaf.Frontend.Compiler.AST;
 
 public sealed class CompilationUnitSyntax : SyntaxNode
 {

@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Resolve-Path (Join-Path $ScriptDir "..\..")
 $DistDir = Join-Path $RootDir "dist"
-$PackageName = "oaflang-$Version"
+$PackageName = "oaf-$Version"
 $StagingDir = Join-Path $DistDir $PackageName
 
 Write-Host "Creating release package '$PackageName'..."
@@ -30,7 +30,7 @@ if ($RuntimeId -eq "") {
 }
 
 $publishArgs = @(
-    (Join-Path $RootDir "OafLang.csproj"),
+    (Join-Path $RootDir "Oaf.csproj"),
     "--configuration", "Release",
     "--output", (Join-Path $StagingDir "bin"),
     "--runtime", $RuntimeId,
@@ -71,7 +71,7 @@ if (Test-Path $installPsSource) {
 
 $readmePath = Join-Path $StagingDir "README.txt"
 @"
-OafLang Release Package $Version
+Oaf Release Package $Version
 Target Runtime: $RuntimeId
 
 Contents:

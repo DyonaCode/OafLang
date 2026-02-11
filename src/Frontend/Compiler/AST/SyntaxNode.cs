@@ -1,4 +1,4 @@
-namespace OafLang.Frontend.Compiler.AST;
+namespace Oaf.Frontend.Compiler.AST;
 
 public readonly record struct SourceSpan(int Line, int Column, int Length)
 {

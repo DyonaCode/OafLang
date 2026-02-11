@@ -1,7 +1,7 @@
-using OafLang.Frontend.Compiler.AST;
-using OafLang.Tests.Framework;
+using Oaf.Frontend.Compiler.AST;
+using Oaf.Tests.Framework;
 
-namespace OafLang.Tests.Unit.Parser;
+namespace Oaf.Tests.Unit.Parser;
 
 public static class ParserTests
 {

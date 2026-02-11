@@ -1,7 +1,7 @@
-using OafLang.Frontend.Compiler.AST;
-using OafLang.Frontend.Compiler.Lexer;
+using Oaf.Frontend.Compiler.AST;
+using Oaf.Frontend.Compiler.Lexer;
 
-namespace OafLang.Frontend.Compiler.CodeGen;
+namespace Oaf.Frontend.Compiler.CodeGen;
 
 public sealed class IrLowerer
 {

@@ -1,4 +1,4 @@
-namespace OafLang.Frontend.Compiler.CodeGen.Passes;
+namespace Oaf.Frontend.Compiler.CodeGen.Passes;
 
 public sealed class ConstantFoldingPass : IIrOptimizationPass
 {

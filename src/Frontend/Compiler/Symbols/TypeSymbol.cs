@@ -1,4 +1,4 @@
-namespace OafLang.Frontend.Compiler.Symbols;
+namespace Oaf.Frontend.Compiler.Symbols;
 
 public abstract class TypeSymbol
 {

@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text;
-using OafLang.Frontend.Compiler.Diagnostics;
+using Oaf.Frontend.Compiler.Diagnostics;
 
-namespace OafLang.Frontend.Compiler.Lexer;
+namespace Oaf.Frontend.Compiler.Lexer;
 
 public sealed class Lexer
 {

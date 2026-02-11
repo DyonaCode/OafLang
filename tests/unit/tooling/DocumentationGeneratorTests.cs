@@ -1,7 +1,7 @@
-using OafLang.Tests.Framework;
-using OafLang.Tooling.Documentation;
+using Oaf.Tests.Framework;
+using Oaf.Tooling.Documentation;
 
-namespace OafLang.Tests.Unit.Tooling;
+namespace Oaf.Tests.Unit.Tooling;
 
 public static class DocumentationGeneratorTests
 {
@@ -29,7 +29,7 @@ public static class DocumentationGeneratorTests
 
     private static void GeneratesDocumentationFileFromSourcePath()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"oaflang_docs_{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"oaf_docs_{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
 
         try
@@ -55,7 +55,7 @@ public static class DocumentationGeneratorTests
 
     private static void GeneratesDirectoryDocsWithUniqueRelativePaths()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"oaflang_docs_dir_{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"oaf_docs_dir_{Guid.NewGuid():N}");
         var sourceRoot = Path.Combine(root, "src");
         Directory.CreateDirectory(sourceRoot);
 

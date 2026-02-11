@@ -1,15 +1,15 @@
 using System.Globalization;
 using System.Reflection;
-using OafLang.Frontend.Compiler.AST;
-using OafLang.Frontend.Compiler.CodeGen;
-using OafLang.Frontend.Compiler.CodeGen.Bytecode;
-using OafLang.Frontend.Compiler.Diagnostics;
-using OafLang.Frontend.Compiler.Driver;
-using OafLang.Tooling.Benchmarking;
-using OafLang.Tooling.Documentation;
-using OafLang.Tooling.Formatting;
-using OafLang.Tooling.PackageManagement;
-using OafLang.Tests;
+using Oaf.Frontend.Compiler.AST;
+using Oaf.Frontend.Compiler.CodeGen;
+using Oaf.Frontend.Compiler.CodeGen.Bytecode;
+using Oaf.Frontend.Compiler.Diagnostics;
+using Oaf.Frontend.Compiler.Driver;
+using Oaf.Tooling.Benchmarking;
+using Oaf.Tooling.Documentation;
+using Oaf.Tooling.Formatting;
+using Oaf.Tooling.PackageManagement;
+using Oaf.Tests;
 
 if (args.Contains("--self-test", StringComparer.Ordinal))
 {
@@ -782,7 +782,7 @@ static bool TryParseSdkCommandOptions(
 
 static void PrintUsage()
 {
-    Console.WriteLine("OafLang SDK/CLI");
+    Console.WriteLine("Oaf SDK/CLI");
     Console.WriteLine("Usage:");
     Console.WriteLine("  oaf                           (runs ./main.oaf when present)");
     Console.WriteLine("  oaf --version");

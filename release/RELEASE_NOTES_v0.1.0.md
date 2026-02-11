@@ -1,4 +1,4 @@
-# OafLang v0.1.0 Release Notes
+# Oaf v0.1.0 Release Notes
 
 Release Date: 2026-02-11
 

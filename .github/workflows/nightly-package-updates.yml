@@ -31,7 +31,7 @@ jobs:
       - name: Update NuGet package references
         run: |
           export PATH="$PATH:$HOME/.dotnet/tools"
-          dotnet outdated OafLang.sln --upgrade --version-lock None --pre-release Never
+          dotnet outdated Oaf.sln --upgrade --version-lock None --pre-release Never
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@v6

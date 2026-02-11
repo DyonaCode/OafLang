@@ -1,7 +1,7 @@
-using OafLang.Tests.Framework;
-using OafLang.Tooling.Benchmarking;
+using Oaf.Tests.Framework;
+using Oaf.Tooling.Benchmarking;
 
-namespace OafLang.Tests.Unit.Benchmark;
+namespace Oaf.Tests.Unit.Benchmark;
 
 public static class BenchmarkTests
 {
@@ -40,7 +40,7 @@ public static class BenchmarkTests
                 .OrderBy(static runtime => runtime, StringComparer.Ordinal)
                 .ToArray();
 
-            TestAssertions.SequenceEqual(["csharp", "oaflang"], runtimes, $"Expected baseline and OafLang results for '{name}'.");
+            TestAssertions.SequenceEqual(["csharp", "oaf"], runtimes, $"Expected baseline and Oaf results for '{name}'.");
         }
     }
 
@@ -48,9 +48,9 @@ public static class BenchmarkTests
     {
         var results = new[]
         {
-            new OafBenchmarkResult("lexer", "oaflang", 10, 200, 20, 0.5),
+            new OafBenchmarkResult("lexer", "oaf", 10, 200, 20, 0.5),
             new OafBenchmarkResult("lexer", "csharp", 10, 20, 2, 5),
-            new OafBenchmarkResult("bytecode_vm", "oaflang", 10, 80, 8, 1.25),
+            new OafBenchmarkResult("bytecode_vm", "oaf", 10, 80, 8, 1.25),
             new OafBenchmarkResult("bytecode_vm", "csharp", 10, 20, 2, 5)
         };
 
@@ -66,7 +66,7 @@ public static class BenchmarkTests
     {
         var results = new[]
         {
-            new OafBenchmarkResult("compiler_pipeline", "oaflang", 10, 45, 4.5, 2.22),
+            new OafBenchmarkResult("compiler_pipeline", "oaf", 10, 45, 4.5, 2.22),
             new OafBenchmarkResult("compiler_pipeline", "csharp", 10, 20, 2, 5)
         };
 

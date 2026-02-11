@@ -1,7 +1,7 @@
-using OafLang.Frontend.Compiler.Diagnostics;
-using OafLang.Tests.Framework;
+using Oaf.Frontend.Compiler.Diagnostics;
+using Oaf.Tests.Framework;
 
-namespace OafLang.Tests.Unit.TypeChecker;
+namespace Oaf.Tests.Unit.TypeChecker;
 
 public static class TypeCheckerTests
 {

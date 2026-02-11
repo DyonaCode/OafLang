@@ -1,4 +1,4 @@
-namespace OafLang.Frontend.Compiler.CodeGen;
+namespace Oaf.Frontend.Compiler.CodeGen;
 
 public sealed class IrBasicBlock
 {

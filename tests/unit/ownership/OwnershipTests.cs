@@ -1,8 +1,8 @@
-using OafLang.Frontend.Compiler.Diagnostics;
-using OafLang.Frontend.Compiler.Ownership;
-using OafLang.Tests.Framework;
+using Oaf.Frontend.Compiler.Diagnostics;
+using Oaf.Frontend.Compiler.Ownership;
+using Oaf.Tests.Framework;
 
-namespace OafLang.Tests.Unit.Ownership;
+namespace Oaf.Tests.Unit.Ownership;
 
 public static class OwnershipTests
 {

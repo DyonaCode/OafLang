@@ -1,5 +1,5 @@
 param(
-    [string]$InstallDir = "$env:LOCALAPPDATA\OafLang\bin",
+    [string]$InstallDir = "$env:LOCALAPPDATA\Oaf\bin",
     [string]$OafHome = "$env:USERPROFILE\.oaf",
     [string]$Version = ""
 )
@@ -12,7 +12,7 @@ $SourceExe = Join-Path $ScriptDir "bin\oaf.exe"
 $CurrentFile = Join-Path $OafHome "current.txt"
 
 if (-not (Test-Path $SourceExe)) {
-    throw "Could not find '$SourceExe'. Run this script from the extracted OafLang package root."
+    throw "Could not find '$SourceExe'. Run this script from the extracted Oaf package root."
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
@@ -32,7 +32,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $packageName = Split-Path -Leaf $ScriptDir
-    if ($packageName.StartsWith("oaflang-", [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($packageName.StartsWith("oaf-", [System.StringComparison]::OrdinalIgnoreCase)) {
         $Version = $packageName.Substring(8)
     }
 }

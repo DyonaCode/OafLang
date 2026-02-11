@@ -1,6 +1,6 @@
-using OafLang.Frontend.Compiler.CodeGen;
+using Oaf.Frontend.Compiler.CodeGen;
 
-namespace OafLang.Frontend.Compiler.CodeGen.Bytecode;
+namespace Oaf.Frontend.Compiler.CodeGen.Bytecode;
 
 public sealed class BytecodeGenerator
 {

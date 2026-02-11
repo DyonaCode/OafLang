@@ -1,9 +1,9 @@
-using OafLang.Frontend.Compiler.CodeGen.Bytecode;
-using OafLang.Frontend.Compiler.Diagnostics;
-using OafLang.Frontend.Compiler.Driver;
-using OafLang.Tests.Framework;
+using Oaf.Frontend.Compiler.CodeGen.Bytecode;
+using Oaf.Frontend.Compiler.Diagnostics;
+using Oaf.Frontend.Compiler.Driver;
+using Oaf.Tests.Framework;
 
-namespace OafLang.Tests.Unit.Bytecode;
+namespace Oaf.Tests.Unit.Bytecode;
 
 public static class BytecodeTests
 {

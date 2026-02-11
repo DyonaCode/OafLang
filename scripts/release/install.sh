@@ -13,7 +13,7 @@ REQUESTED_VERSION="${1:-}"
 
 if [[ ! -f "${SOURCE_BIN}" ]]; then
   echo "Could not find '${SOURCE_BIN}'." >&2
-  echo "Run this script from the extracted OafLang package root." >&2
+  echo "Run this script from the extracted Oaf package root." >&2
   exit 1
 fi
 
@@ -26,8 +26,8 @@ fi
 
 if [[ -z "${REQUESTED_VERSION}" ]]; then
   package_name="$(basename "${SCRIPT_DIR}")"
-  if [[ "${package_name}" == oaflang-* ]]; then
-    REQUESTED_VERSION="${package_name#oaflang-}"
+  if [[ "${package_name}" == oaf-* ]]; then
+    REQUESTED_VERSION="${package_name#oaf-}"
   fi
 fi
 

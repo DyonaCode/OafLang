@@ -1,4 +1,4 @@
-# Tutorial 01: Your First OafLang Program
+# Tutorial 01: Your First Oaf Program
 
 ## Goal
 
@@ -7,7 +7,7 @@ Create and run a minimal program that returns a value.
 ## Source
 
 ```oaf
-message = "Hello, OafLang";
+message = "Hello, Oaf";
 return message;
 ```
 

@@ -1,7 +1,7 @@
 using System.Text;
-using OafLang.Frontend.Compiler.Lexer;
+using Oaf.Frontend.Compiler.Lexer;
 
-namespace OafLang.Frontend.Compiler.AST;
+namespace Oaf.Frontend.Compiler.AST;
 
 public static class AstPrinter
 {

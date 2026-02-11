@@ -9,4 +9,4 @@ benchmarks/results/
 *.user
 *.suo
 *.DS_Store
-oaflang-*/
+oaf-*/

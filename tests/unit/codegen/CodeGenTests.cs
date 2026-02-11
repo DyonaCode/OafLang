@@ -1,9 +1,9 @@
-using OafLang.Frontend.Compiler.CodeGen;
-using OafLang.Frontend.Compiler.Diagnostics;
-using OafLang.Frontend.Compiler.Driver;
-using OafLang.Tests.Framework;
+using Oaf.Frontend.Compiler.CodeGen;
+using Oaf.Frontend.Compiler.Diagnostics;
+using Oaf.Frontend.Compiler.Driver;
+using Oaf.Tests.Framework;
 
-namespace OafLang.Tests.Unit.CodeGen;
+namespace Oaf.Tests.Unit.CodeGen;
 
 public static class CodeGenTests
 {

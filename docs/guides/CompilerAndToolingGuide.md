@@ -47,7 +47,7 @@ dotnet run -- ./examples/applications/01_sum_accumulator.oaf --run-bytecode
 
 `--benchmark` runs lexer, compiler-pipeline, and bytecode VM benchmarks and reports:
 
-- OafLang timings
+- Oaf timings
 - C# baseline timings
 - mean ratio (`oaf/csharp`) per benchmark group
 
@@ -59,7 +59,7 @@ dotnet run -- --benchmark 200 --max-mean-ratio 5.0 --fail-on-regression
 
 ## Native Language Comparison Benchmarks
 
-For direct OafLang vs C vs Rust algorithm comparisons, run:
+For direct Oaf vs C vs Rust algorithm comparisons, run:
 
 ```bash
 ./scripts/benchmark/run_c_rust_benchmarks.sh --oaf-mode tiered
@@ -67,19 +67,19 @@ For direct OafLang vs C vs Rust algorithm comparisons, run:
 
 This runs identical kernels in all three languages (`sum_xor`, `prime_trial`, `affine_grid`) and writes a combined CSV under `benchmarks/results/`.
 
-To run OafLang kernels only:
+To run Oaf kernels only:
 
 ```bash
 dotnet run -- --benchmark-kernels --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
 ```
 
-To run OafLang kernels as generated native binaries:
+To run Oaf kernels as generated native binaries:
 
 ```bash
 dotnet run -- --benchmark-kernels --native --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
 ```
 
-To run OafLang kernels with tiered VM-to-native promotion:
+To run Oaf kernels with tiered VM-to-native promotion:
 
 ```bash
 dotnet run -- --benchmark-kernels --tiered --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48

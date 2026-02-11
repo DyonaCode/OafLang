@@ -43,10 +43,10 @@ set(OAFLANG_RUNTIME_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/../../src/stdlib/serialization/serializer.c
 )
 
-add_library(oaflang_runtime STATIC ${OAFLANG_RUNTIME_SOURCES})
+add_library(oaf_runtime STATIC ${OAFLANG_RUNTIME_SOURCES})
 
 target_include_directories(
-    oaflang_runtime
+    oaf_runtime
     PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/core/include
     ${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/error/include
@@ -62,10 +62,10 @@ target_include_directories(
     ${CMAKE_CURRENT_LIST_DIR}/../../src/stdlib/serialization/include
 )
 
-target_compile_features(oaflang_runtime PUBLIC c_std_11)
+target_compile_features(oaf_runtime PUBLIC c_std_11)
 
 find_package(Threads REQUIRED)
-target_link_libraries(oaflang_runtime PUBLIC Threads::Threads)
+target_link_libraries(oaf_runtime PUBLIC Threads::Threads)
 
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
@@ -73,70 +73,70 @@ if(PKG_CONFIG_FOUND)
 endif()
 
 if(LIBFFI_FOUND)
-    target_compile_definitions(oaflang_runtime PUBLIC OAFLANG_HAVE_LIBFFI=1)
-    target_include_directories(oaflang_runtime PUBLIC ${LIBFFI_INCLUDE_DIRS})
-    target_link_libraries(oaflang_runtime PUBLIC ${LIBFFI_LIBRARIES})
+    target_compile_definitions(oaf_runtime PUBLIC OAFLANG_HAVE_LIBFFI=1)
+    target_include_directories(oaf_runtime PUBLIC ${LIBFFI_INCLUDE_DIRS})
+    target_link_libraries(oaf_runtime PUBLIC ${LIBFFI_LIBRARIES})
 endif()
 
 add_executable(
-    oaflang_error_smoke
+    oaf_error_smoke
     ${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/error/tests/error_smoke.c
 )
 
-target_link_libraries(oaflang_error_smoke PRIVATE oaflang_runtime)
+target_link_libraries(oaf_error_smoke PRIVATE oaf_runtime)
 
 add_executable(
-    oaflang_memory_smoke
+    oaf_memory_smoke
     ${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/memory/tests/memory_smoke.c
 )
 
-target_link_libraries(oaflang_memory_smoke PRIVATE oaflang_runtime)
+target_link_libraries(oaf_memory_smoke PRIVATE oaf_runtime)
 
 add_executable(
-    oaflang_runtime_smoke
+    oaf_runtime_smoke
     ${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/core/tests/runtime_smoke.c
 )
 
-target_link_libraries(oaflang_runtime_smoke PRIVATE oaflang_runtime)
+target_link_libraries(oaf_runtime_smoke PRIVATE oaf_runtime)
 
 add_executable(
-    oaflang_types_smoke
+    oaf_types_smoke
     ${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/types/tests/types_smoke.c
 )
 
-target_link_libraries(oaflang_types_smoke PRIVATE oaflang_runtime)
+target_link_libraries(oaf_types_smoke PRIVATE oaf_runtime)
 
 add_executable(
-    oaflang_concurrency_smoke
+    oaf_concurrency_smoke
     ${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/concurrency/tests/concurrency_smoke.c
 )
 
-target_link_libraries(oaflang_concurrency_smoke PRIVATE oaflang_runtime)
+target_link_libraries(oaf_concurrency_smoke PRIVATE oaf_runtime)
 
 add_executable(
-    oaflang_ffi_smoke
+    oaf_ffi_smoke
     ${CMAKE_CURRENT_LIST_DIR}/../../src/Runtime/ffi/tests/ffi_smoke.c
 )
 
-target_link_libraries(oaflang_ffi_smoke PRIVATE oaflang_runtime)
+target_link_libraries(oaf_ffi_smoke PRIVATE oaf_runtime)
 
 add_executable(
-    oaflang_collections_smoke
+    oaf_collections_smoke
     ${CMAKE_CURRENT_LIST_DIR}/../../src/stdlib/collections/tests/collections_smoke.c
 )
 
-target_link_libraries(oaflang_collections_smoke PRIVATE oaflang_runtime)
+target_link_libraries(oaf_collections_smoke PRIVATE oaf_runtime)
 
 add_executable(
-    oaflang_stdlib_smoke
+    oaf_stdlib_smoke
     ${CMAKE_CURRENT_LIST_DIR}/../../src/stdlib/tests/stdlib_smoke.c
 )
 
-target_link_libraries(oaflang_stdlib_smoke PRIVATE oaflang_runtime)
+target_link_libraries(oaf_stdlib_smoke PRIVATE oaf_runtime)
 
 add_executable(
-    oaflang_advanced_concurrency_smoke
+    oaf_advanced_concurrency_smoke
     ${CMAKE_CURRENT_LIST_DIR}/../../src/stdlib/tests/advanced_concurrency_smoke.c
 )
 
-target_link_libraries(oaflang_advanced_concurrency_smoke PRIVATE oaflang_runtime)
+target_link_libraries(oaf_advanced_concurrency_smoke PRIVATE oaf_runtime)

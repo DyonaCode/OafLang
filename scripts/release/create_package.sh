@@ -6,7 +6,7 @@ RUNTIME_ID="${2:-}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIST_DIR="${ROOT_DIR}/dist"
-PACKAGE_NAME="oaflang-${VERSION}"
+PACKAGE_NAME="oaf-${VERSION}"
 STAGING_DIR="${DIST_DIR}/${PACKAGE_NAME}"
 
 echo "Creating release package '${PACKAGE_NAME}'..."
@@ -24,7 +24,7 @@ if [[ -z "${RUNTIME_ID}" ]]; then
 fi
 
 PUBLISH_ARGS=(
-  "${ROOT_DIR}/OafLang.csproj"
+  "${ROOT_DIR}/Oaf.csproj"
   "--configuration" "Release"
   "--output" "${STAGING_DIR}/bin"
   "--runtime" "${RUNTIME_ID}"
@@ -52,7 +52,7 @@ if [[ -f "${ROOT_DIR}/scripts/release/install.ps1" ]]; then
 fi
 
 cat > "${STAGING_DIR}/README.txt" <<EOF
-OafLang Release Package ${VERSION}
+Oaf Release Package ${VERSION}
 Target Runtime: ${RUNTIME_ID}
 
 Contents:

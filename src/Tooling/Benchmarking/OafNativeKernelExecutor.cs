@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using OafLang.Frontend.Compiler.CodeGen;
-using OafLang.Frontend.Compiler.CodeGen.Bytecode;
+using Oaf.Frontend.Compiler.CodeGen;
+using Oaf.Frontend.Compiler.CodeGen.Bytecode;
 
-namespace OafLang.Tooling.Benchmarking;
+namespace Oaf.Tooling.Benchmarking;
 
 public static class OafNativeKernelExecutor
 {
@@ -146,7 +146,7 @@ public static class OafNativeKernelExecutor
         var compiler = ResolveCompiler()
             ?? throw new InvalidOperationException("No C compiler found. Set CC or install a system compiler.");
 
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"oaflang_native_{Guid.NewGuid():N}");
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"oaf_native_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
 
         try
@@ -179,7 +179,7 @@ public static class OafNativeKernelExecutor
         using var handle = CreateHandle(program);
         var (parsedIterations, totalMs, meanMs, checksum) = handle.ExecuteIterations(iterations);
         return new OafKernelBenchmarkResult(
-            Language: "oaflang",
+            Language: "oaf",
             Algorithm: algorithm,
             Iterations: parsedIterations,
             TotalMilliseconds: totalMs,

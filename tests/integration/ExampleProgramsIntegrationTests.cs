@@ -1,8 +1,8 @@
-using OafLang.Frontend.Compiler.CodeGen.Bytecode;
-using OafLang.Frontend.Compiler.Driver;
-using OafLang.Tests.Framework;
+using Oaf.Frontend.Compiler.CodeGen.Bytecode;
+using Oaf.Frontend.Compiler.Driver;
+using Oaf.Tests.Framework;
 
-namespace OafLang.Tests.Integration;
+namespace Oaf.Tests.Integration;
 
 public static class ExampleProgramsIntegrationTests
 {
@@ -56,7 +56,7 @@ public static class ExampleProgramsIntegrationTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "OafLang.csproj")))
+            if (File.Exists(Path.Combine(directory.FullName, "Oaf.csproj")))
             {
                 return directory.FullName;
             }

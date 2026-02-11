@@ -1,7 +1,7 @@
 using System.Text;
-using OafLang.Frontend.Compiler.Lexer;
+using Oaf.Frontend.Compiler.Lexer;
 
-namespace OafLang.Tooling.Formatting;
+namespace Oaf.Tooling.Formatting;
 
 public static class OafCodeFormatter
 {

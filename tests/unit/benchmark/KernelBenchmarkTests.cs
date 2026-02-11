@@ -1,7 +1,7 @@
-using OafLang.Tests.Framework;
-using OafLang.Tooling.Benchmarking;
+using Oaf.Tests.Framework;
+using Oaf.Tooling.Benchmarking;
 
-namespace OafLang.Tests.Unit.Benchmark;
+namespace Oaf.Tests.Unit.Benchmark;
 
 public static class KernelBenchmarkTests
 {
@@ -27,7 +27,7 @@ public static class KernelBenchmarkTests
 
         foreach (var result in results)
         {
-            TestAssertions.True(string.Equals(result.Language, "oaflang", StringComparison.Ordinal));
+            TestAssertions.True(string.Equals(result.Language, "oaf", StringComparison.Ordinal));
             TestAssertions.Equal(2, result.Iterations);
             TestAssertions.True(result.TotalMilliseconds >= 0, "Total benchmark time should be non-negative.");
             TestAssertions.True(result.MeanMilliseconds >= 0, "Mean benchmark time should be non-negative.");

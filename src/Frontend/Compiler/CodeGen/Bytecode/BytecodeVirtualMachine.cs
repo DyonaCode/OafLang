@@ -1,4 +1,4 @@
-namespace OafLang.Frontend.Compiler.CodeGen.Bytecode;
+namespace Oaf.Frontend.Compiler.CodeGen.Bytecode;
 
 public sealed class BytecodeExecutionResult
 {

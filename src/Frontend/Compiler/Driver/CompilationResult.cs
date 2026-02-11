@@ -1,10 +1,10 @@
-using OafLang.Frontend.Compiler.AST;
-using OafLang.Frontend.Compiler.CodeGen;
-using OafLang.Frontend.Compiler.CodeGen.Bytecode;
-using OafLang.Frontend.Compiler.Diagnostics;
-using OafLang.Frontend.Compiler.Symbols;
+using Oaf.Frontend.Compiler.AST;
+using Oaf.Frontend.Compiler.CodeGen;
+using Oaf.Frontend.Compiler.CodeGen.Bytecode;
+using Oaf.Frontend.Compiler.Diagnostics;
+using Oaf.Frontend.Compiler.Symbols;
 
-namespace OafLang.Frontend.Compiler.Driver;
+namespace Oaf.Frontend.Compiler.Driver;
 
 public sealed class CompilationResult
 {

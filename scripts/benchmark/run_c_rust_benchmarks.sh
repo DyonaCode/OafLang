@@ -94,22 +94,22 @@ append_oaf_rows() {
     shift
     local output
     output="$("${OAF_CMD[@]}" --benchmark-kernels "$@" "${COMMON_ARGS[@]}")"
-    printf '%s\n' "${output}" | sed "1d;s/^oaflang,/${label},/" >> "${OAF_ROWS_FILE}"
+    printf '%s\n' "${output}" | sed "1d;s/^oaf,/${label},/" >> "${OAF_ROWS_FILE}"
 }
 
 case "${OAF_MODE}" in
     native)
-        append_oaf_rows "oaflang_exe" --native
+        append_oaf_rows "oaf_exe" --native
         ;;
     vm)
-        append_oaf_rows "oaflang_vm"
+        append_oaf_rows "oaf_vm"
         ;;
     tiered)
-        append_oaf_rows "oaflang_tiered" --tiered
+        append_oaf_rows "oaf_tiered" --tiered
         ;;
     both)
-        append_oaf_rows "oaflang_vm"
-        append_oaf_rows "oaflang_exe" --native
+        append_oaf_rows "oaf_vm"
+        append_oaf_rows "oaf_exe" --native
         ;;
     *)
         echo "Unknown --oaf-mode value '${OAF_MODE}'. Use 'native', 'tiered', 'vm', or 'both'." >&2
@@ -143,15 +143,15 @@ awk -F, '
 NR == 1 { next }
 $1 == "c" { c[$2] = $5 + 0.0 }
 $1 == "rust" { r[$2] = $5 + 0.0 }
-$1 ~ /^oaflang_/ { o[$1 SUBSEP $2] = $5 + 0.0 }
+$1 ~ /^oaf_/ { o[$1 SUBSEP $2] = $5 + 0.0 }
 END {
     printf "%-18s %-16s %-16s %-16s %-16s\n", "algorithm", "rust_vs_c_ratio", "oaf_vm_vs_c", "oaf_exe_vs_c", "oaf_tiered_vs_c"
     for (algo in c) {
         if (c[algo] > 0) {
             rust_ratio = (algo in r) ? sprintf("%.3fx", r[algo] / c[algo]) : "n/a"
-            vm_key = "oaflang_vm" SUBSEP algo
-            exe_key = "oaflang_exe" SUBSEP algo
-            tiered_key = "oaflang_tiered" SUBSEP algo
+            vm_key = "oaf_vm" SUBSEP algo
+            exe_key = "oaf_exe" SUBSEP algo
+            tiered_key = "oaf_tiered" SUBSEP algo
             vm_ratio = (vm_key in o) ? sprintf("%.3fx", o[vm_key] / c[algo]) : "n/a"
             exe_ratio = (exe_key in o) ? sprintf("%.3fx", o[exe_key] / c[algo]) : "n/a"
             tiered_ratio = (tiered_key in o) ? sprintf("%.3fx", o[tiered_key] / c[algo]) : "n/a"

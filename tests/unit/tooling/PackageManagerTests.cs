@@ -1,7 +1,7 @@
-using OafLang.Tests.Framework;
-using OafLang.Tooling.PackageManagement;
+using Oaf.Tests.Framework;
+using Oaf.Tooling.PackageManagement;
 
-namespace OafLang.Tests.Unit.Tooling;
+namespace Oaf.Tests.Unit.Tooling;
 
 public static class PackageManagerTests
 {
@@ -27,7 +27,7 @@ public static class PackageManagerTests
 
     private static void InstallsManifestDependencies()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"oaflang_pkg_{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"oaf_pkg_{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
 
         try

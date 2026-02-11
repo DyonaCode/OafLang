@@ -1,9 +1,9 @@
 using System.Diagnostics;
-using OafLang.Frontend.Compiler.CodeGen.Bytecode;
-using OafLang.Frontend.Compiler.Driver;
-using OafLang.Frontend.Compiler.Lexer;
+using Oaf.Frontend.Compiler.CodeGen.Bytecode;
+using Oaf.Frontend.Compiler.Driver;
+using Oaf.Frontend.Compiler.Lexer;
 
-namespace OafLang.Tooling.Benchmarking;
+namespace Oaf.Tooling.Benchmarking;
 
 public readonly record struct OafBenchmarkResult(
     string Name,
@@ -76,7 +76,7 @@ public static class OafBenchmarkRunner
 
     public static void PrintReport(TextWriter output, IReadOnlyList<OafBenchmarkResult> results)
     {
-        output.WriteLine("OafLang Benchmark Report");
+        output.WriteLine("Oaf Benchmark Report");
         output.WriteLine("------------------------");
 
         foreach (var result in results)
@@ -87,12 +87,12 @@ public static class OafBenchmarkRunner
         }
 
         output.WriteLine();
-        output.WriteLine("Comparison (OafLang vs C# baseline)");
+        output.WriteLine("Comparison (Oaf vs C# baseline)");
         output.WriteLine("-----------------------------------");
 
         foreach (var group in results.GroupBy(static result => result.Name, StringComparer.Ordinal))
         {
-            var oaf = group.FirstOrDefault(static result => string.Equals(result.Runtime, "oaflang", StringComparison.Ordinal));
+            var oaf = group.FirstOrDefault(static result => string.Equals(result.Runtime, "oaf", StringComparison.Ordinal));
             var csharp = group.FirstOrDefault(static result => string.Equals(result.Runtime, "csharp", StringComparison.Ordinal));
 
             if (string.IsNullOrEmpty(oaf.Name) || string.IsNullOrEmpty(csharp.Name) || csharp.MeanMilliseconds <= 0)
@@ -117,7 +117,7 @@ public static class OafBenchmarkRunner
         var regressions = new List<OafBenchmarkRegression>();
         foreach (var group in results.GroupBy(static result => result.Name, StringComparer.Ordinal))
         {
-            var oaf = group.FirstOrDefault(static result => string.Equals(result.Runtime, "oaflang", StringComparison.Ordinal));
+            var oaf = group.FirstOrDefault(static result => string.Equals(result.Runtime, "oaf", StringComparison.Ordinal));
             var csharp = group.FirstOrDefault(static result => string.Equals(result.Runtime, "csharp", StringComparison.Ordinal));
             if (string.IsNullOrEmpty(oaf.Name) || string.IsNullOrEmpty(csharp.Name) || csharp.MeanMilliseconds <= 0)
             {
@@ -168,7 +168,7 @@ public static class OafBenchmarkRunner
         }
 
         stopwatch.Stop();
-        return BuildResult("lexer", "oaflang", iterations, stopwatch.Elapsed);
+        return BuildResult("lexer", "oaf", iterations, stopwatch.Elapsed);
     }
 
     private static OafBenchmarkResult RunCompilerBenchmark(int iterations)
@@ -186,7 +186,7 @@ public static class OafBenchmarkRunner
         }
 
         stopwatch.Stop();
-        return BuildResult("compiler_pipeline", "oaflang", iterations, stopwatch.Elapsed);
+        return BuildResult("compiler_pipeline", "oaf", iterations, stopwatch.Elapsed);
     }
 
     private static OafBenchmarkResult RunBytecodeBenchmark(int iterations)
@@ -212,7 +212,7 @@ public static class OafBenchmarkRunner
         }
 
         stopwatch.Stop();
-        return BuildResult("bytecode_vm", "oaflang", iterations, stopwatch.Elapsed);
+        return BuildResult("bytecode_vm", "oaf", iterations, stopwatch.Elapsed);
     }
 
     private static OafBenchmarkResult RunCSharpLexerBaseline(int iterations)

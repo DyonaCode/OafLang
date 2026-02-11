@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace OafLang.Frontend.Compiler.CodeGen.Bytecode;
+namespace Oaf.Frontend.Compiler.CodeGen.Bytecode;
 
 public static class BytecodePrinter
 {

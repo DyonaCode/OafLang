@@ -1,4 +1,4 @@
-namespace OafLang.Frontend.Compiler.Lexer;
+namespace Oaf.Frontend.Compiler.Lexer;
 
 public sealed class Token
 {
