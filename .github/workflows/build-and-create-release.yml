@@ -1,0 +1,130 @@
+name: build-and-create-release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (with or without leading v)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resolve_version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve release version
+        id: resolve
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            raw_version="${GITHUB_REF_NAME}"
+          else
+            raw_version="${{ github.event.inputs.version }}"
+          fi
+
+          version="${raw_version#v}"
+
+          if [[ -z "${version}" ]]; then
+            echo "Version is required." >&2
+            exit 1
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${version}" >> "${GITHUB_OUTPUT}"
+
+  build_artifacts:
+    needs: resolve_version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            runtime_id: linux-x64
+          - os: macos-latest
+            runtime_id: osx-arm64
+          - os: windows-latest
+            runtime_id: win-x64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          bash scripts/release/create_package.sh "${{ needs.resolve_version.outputs.version }}" "${{ matrix.runtime_id }}"
+
+      - name: Rename package archives (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          version="${{ needs.resolve_version.outputs.version }}"
+          runtime_id="${{ matrix.runtime_id }}"
+          for ext in tar.gz zip; do
+            src="dist/oaflang-${version}.${ext}"
+            dst="dist/oaflang-${version}-${runtime_id}.${ext}"
+            if [[ -f "${src}" ]]; then
+              mv "${src}" "${dst}"
+            fi
+          done
+
+      - name: Build package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/release/create_package.ps1 -Version "${{ needs.resolve_version.outputs.version }}" -RuntimeId "${{ matrix.runtime_id }}"
+
+      - name: Rename package archives (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ needs.resolve_version.outputs.version }}"
+          $runtime = "${{ matrix.runtime_id }}"
+          $src = "dist/oaflang-$version.zip"
+          $dst = "dist/oaflang-$version-$runtime.zip"
+          if (Test-Path $src) {
+            Move-Item -Path $src -Destination $dst -Force
+          }
+
+      - name: Upload artifact bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.runtime_id }}
+          path: dist/oaflang-${{ needs.resolve_version.outputs.version }}-${{ matrix.runtime_id }}.*
+          if-no-files-found: error
+
+  publish_release:
+    needs:
+      - resolve_version
+      - build_artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve_version.outputs.tag }}
+          name: OafLang v${{ needs.resolve_version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: release-artifacts/*

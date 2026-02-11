@@ -1,0 +1,197 @@
+name: pr-test-and-merge
+
+on:
+  pull_request_review:
+    types:
+      - submitted
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-test-and-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  admin_approval_check:
+    if: github.event.review.state == 'approved' && github.event.pull_request.state == 'open'
+    runs-on: ubuntu-latest
+    outputs:
+      is_admin: ${{ steps.check.outputs.is_admin }}
+      pr_number: ${{ steps.check.outputs.pr_number }}
+      head_sha: ${{ steps.check.outputs.head_sha }}
+    steps:
+      - name: Verify reviewer is admin
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const reviewer = context.payload.review.user.login;
+            const prNumber = context.payload.pull_request.number;
+
+            let permission = "none";
+            try {
+              const permissionResult = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner,
+                repo,
+                username: reviewer
+              });
+              permission = permissionResult.data.permission;
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+            const isAdmin = permission === "admin";
+
+            core.info(`Reviewer ${reviewer} permission: ${permission}`);
+            core.setOutput("is_admin", isAdmin ? "true" : "false");
+            core.setOutput("pr_number", String(prNumber));
+            core.setOutput("head_sha", context.payload.pull_request.head.sha);
+
+            if (!isAdmin) {
+              core.warning(`Skipping: reviewer ${reviewer} is not an admin.`);
+            }
+
+  dotnet_tests:
+    if: needs.admin_approval_check.outputs.is_admin == 'true'
+    needs: admin_approval_check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Checkout PR merge ref
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ needs.admin_approval_check.outputs.pr_number }}/merge
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Run self-test suite
+        run: dotnet run --configuration Release -- --self-test
+
+  c_runtime_smoke:
+    if: needs.admin_approval_check.outputs.is_admin == 'true'
+    needs: admin_approval_check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR merge ref
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ needs.admin_approval_check.outputs.pr_number }}/merge
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build runtime and smoke tests
+        run: cmake --build build --config Release
+
+      - name: Execute smoke binaries
+        run: |
+          ./build/oaflang_error_smoke
+          ./build/oaflang_memory_smoke
+          ./build/oaflang_runtime_smoke
+          ./build/oaflang_types_smoke
+          ./build/oaflang_concurrency_smoke
+          ./build/oaflang_ffi_smoke
+          ./build/oaflang_collections_smoke
+          ./build/oaflang_stdlib_smoke
+          ./build/oaflang_advanced_concurrency_smoke
+
+  merge_pr:
+    if: needs.admin_approval_check.outputs.is_admin == 'true'
+    needs:
+      - admin_approval_check
+      - dotnet_tests
+      - c_runtime_smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Merge pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = Number("${{ needs.admin_approval_check.outputs.pr_number }}");
+            const expectedHeadSha = "${{ needs.admin_approval_check.outputs.head_sha }}";
+
+            const pr = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: prNumber
+            });
+
+            if (pr.data.state !== "open") {
+              core.info(`PR #${prNumber} is not open. Skipping merge.`);
+              return;
+            }
+
+            if (pr.data.head.sha !== expectedHeadSha) {
+              core.setFailed(`PR #${prNumber} head SHA changed during validation; re-approval required.`);
+              return;
+            }
+
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner,
+              repo,
+              pull_number: prNumber,
+              per_page: 100
+            });
+
+            const approvedUsers = [...new Set(
+              reviews
+                .filter((review) => review.state === "APPROVED")
+                .map((review) => review.user.login)
+            )];
+
+            let hasAdminApproval = false;
+            for (const username of approvedUsers) {
+              try {
+                const permissionResult = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner,
+                  repo,
+                  username
+                });
+
+                if (permissionResult.data.permission === "admin") {
+                  hasAdminApproval = true;
+                  break;
+                }
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+              }
+            }
+
+            if (!hasAdminApproval) {
+              core.setFailed(`PR #${prNumber} no longer has an admin approval.`);
+              return;
+            }
+
+            await github.rest.pulls.merge({
+              owner,
+              repo,
+              pull_number: prNumber,
+              merge_method: "squash"
+            });
+
+            core.info(`Merged PR #${prNumber}.`);

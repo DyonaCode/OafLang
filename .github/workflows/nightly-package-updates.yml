@@ -1,0 +1,46 @@
+name: nightly-package-updates
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: nightly-package-updates
+  cancel-in-progress: false
+
+jobs:
+  update_packages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install dotnet-outdated
+        run: dotnet tool install --global dotnet-outdated-tool
+
+      - name: Update NuGet package references
+        run: |
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet outdated OafLang.sln --upgrade --version-lock None --pre-release Never
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: ci/nightly-package-updates
+          delete-branch: true
+          commit-message: "chore(deps): nightly package updates"
+          title: "chore(deps): nightly package updates"
+          body: |
+            Automated nightly dependency update.
+            - Updated NuGet package references using `dotnet-outdated`.
+          labels: dependencies, automated
