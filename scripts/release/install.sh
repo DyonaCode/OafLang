@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_BIN_DIR="${SCRIPT_DIR}/bin"
+SOURCE_BIN="${SCRIPT_DIR}/bin/oaf"
+INSTALL_DIR="${OAF_INSTALL_DIR:-$HOME/.local/bin}"
+OAF_HOME="${OAF_HOME:-$HOME/.oaf}"
+VERSIONS_DIR="${OAF_HOME}/versions"
+CURRENT_FILE="${OAF_HOME}/current.txt"
+SHIM_BIN="${INSTALL_DIR}/oaf"
+REQUESTED_VERSION="${1:-}"
+
+if [[ ! -f "${SOURCE_BIN}" ]]; then
+  echo "Could not find '${SOURCE_BIN}'." >&2
+  echo "Run this script from the extracted OafLang package root." >&2
+  exit 1
+fi
+
+if [[ -z "${REQUESTED_VERSION}" ]]; then
+  candidate_version="$("${SOURCE_BIN}" --version 2>/dev/null | head -n 1 | tr -d '\r' || true)"
+  if [[ "${candidate_version}" =~ ^[vV]?[0-9]+([.][0-9]+){0,3}([\-+][0-9A-Za-z.]+)?$ ]]; then
+    REQUESTED_VERSION="${candidate_version}"
+  fi
+fi
+
+if [[ -z "${REQUESTED_VERSION}" ]]; then
+  package_name="$(basename "${SCRIPT_DIR}")"
+  if [[ "${package_name}" == oaflang-* ]]; then
+    REQUESTED_VERSION="${package_name#oaflang-}"
+  fi
+fi
+
+if [[ -z "${REQUESTED_VERSION}" ]]; then
+  echo "Unable to determine Oaf version automatically." >&2
+  echo "Run install with an explicit version, e.g. './install.sh 0.1.0'." >&2
+  exit 1
+fi
+
+VERSION="${REQUESTED_VERSION#v}"
+VERSION="${VERSION#V}"
+if [[ ! "${VERSION}" =~ ^[0-9]+([.][0-9]+){0,3}([\-+][0-9A-Za-z.]+)?$ ]]; then
+  echo "Resolved version '${VERSION}' is not valid." >&2
+  echo "Run install with an explicit version, e.g. './install.sh 0.1.0'." >&2
+  exit 1
+fi
+VERSION_BIN_DIR="${VERSIONS_DIR}/${VERSION}/bin"
+TARGET_BIN="${VERSION_BIN_DIR}/oaf"
+
+mkdir -p "${VERSION_BIN_DIR}"
+cp -R "${SOURCE_BIN_DIR}/." "${VERSION_BIN_DIR}/"
+chmod +x "${TARGET_BIN}"
+
+mkdir -p "${OAF_HOME}"
+printf '%s\n' "${VERSION}" > "${CURRENT_FILE}"
+
+mkdir -p "${INSTALL_DIR}"
+cat > "${SHIM_BIN}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+OAF_HOME="${OAF_HOME:-$HOME/.oaf}"
+CURRENT_FILE="${OAF_HOME}/current.txt"
+if [[ ! -f "${CURRENT_FILE}" ]]; then
+  echo "No active Oaf version configured. Re-run install.sh." >&2
+  exit 1
+fi
+
+VERSION="$(tr -d '\r\n[:space:]' < "${CURRENT_FILE}")"
+TARGET="${OAF_HOME}/versions/${VERSION}/bin/oaf"
+if [[ ! -x "${TARGET}" ]]; then
+  echo "Configured Oaf version '${VERSION}' is missing: ${TARGET}" >&2
+  exit 1
+fi
+
+exec "${TARGET}" "$@"
+EOF
+chmod +x "${SHIM_BIN}"
+
+path_line="export PATH=\"${INSTALL_DIR}:\$PATH\""
+
+ensure_path_in_rc() {
+  local rc_file="$1"
+  if [[ -f "${rc_file}" ]]; then
+    if ! grep -Fqs "${INSTALL_DIR}" "${rc_file}"; then
+      printf '\n%s\n' "${path_line}" >> "${rc_file}"
+    fi
+  else
+    printf '%s\n' "${path_line}" > "${rc_file}"
+  fi
+}
+
+ensure_path_in_rc "${HOME}/.zshrc"
+ensure_path_in_rc "${HOME}/.bashrc"
+
+echo "Installed version ${VERSION} at: ${TARGET_BIN}"
+echo "Active version set to: ${VERSION}"
+echo "Shim installed at: ${SHIM_BIN}"
+if [[ ":$PATH:" != *":${INSTALL_DIR}:"* ]]; then
+  echo "Added PATH update to ~/.zshrc and ~/.bashrc."
+  echo "Open a new shell or run: source ~/.zshrc"
+fi
+
+echo "Try:"
+echo "  oaf --version"
+echo "  oaf version"

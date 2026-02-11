@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using OafLang.Frontend.Compiler.AST;
 using OafLang.Frontend.Compiler.CodeGen;
 using OafLang.Frontend.Compiler.CodeGen.Bytecode;
@@ -16,8 +17,29 @@ if (args.Contains("--self-test", StringComparer.Ordinal))
     return;
 }
 
-if (args.Length == 0
-    || args.Contains("--help", StringComparer.Ordinal)
+if (args.Length == 1 && string.Equals(args[0], "--version", StringComparison.Ordinal))
+{
+    Console.WriteLine(GetCliVersion());
+    return;
+}
+
+if (args.Length == 0)
+{
+    if (File.Exists("main.oaf"))
+    {
+        var runArgs = new[] { "run", "main.oaf" };
+        if (TryHandleSdkCommand(runArgs, out var defaultRunExitCode))
+        {
+            Environment.ExitCode = defaultRunExitCode;
+            return;
+        }
+    }
+
+    PrintUsage();
+    return;
+}
+
+if (args.Contains("--help", StringComparer.Ordinal)
     || string.Equals(args[0], "help", StringComparison.Ordinal))
 {
     PrintUsage();
@@ -79,6 +101,10 @@ static bool TryHandleSdkCommand(string[] args, out int exitCode)
             return HandleSdkRun(args, out exitCode);
         case "build":
             return HandleSdkBuild(args, out exitCode);
+        case "publish":
+            return HandleSdkPublish(args, out exitCode);
+        case "version":
+            return HandleSdkVersion(args, out exitCode);
         case "clean":
             return HandleSdkClean(args, out exitCode);
         default:
@@ -203,6 +229,7 @@ static bool HandleSdkBuild(string[] args, out int exitCode)
     {
         using var nativeHandle = OafNativeKernelExecutor.CreateHandle(result.BytecodeProgram);
         File.Copy(nativeHandle.ExecutablePath, outputPath, overwrite: true);
+        EnsureExecutablePermissions(outputPath);
         Console.WriteLine($"Built native executable: {Path.GetFullPath(outputPath)}");
         return true;
     }
@@ -212,6 +239,143 @@ static bool HandleSdkBuild(string[] args, out int exitCode)
         exitCode = 1;
         return true;
     }
+}
+
+static bool HandleSdkPublish(string[] args, out int exitCode)
+{
+    exitCode = 0;
+    if (!TryParseSdkCommandOptions(args, requireInput: true, allowOutput: true, allowRuntime: true, out var options, out var errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
+    if (!options.RuntimeProvided)
+    {
+        options.Runtime = "native";
+    }
+
+    if (!TryNormalizeSdkRuntime(options.Runtime, out var runtimeMode, out errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
+    if (runtimeMode != SdkRuntimeMode.Native)
+    {
+        Console.WriteLine("Publish currently targets native executables only. Use -r native.");
+        exitCode = 1;
+        return true;
+    }
+
+    var result = CompileSdkInput(options.Input!);
+    PrintCompilationArtifacts(result, args);
+    PrintDiagnostics(result.Diagnostics);
+    if (!result.Success)
+    {
+        exitCode = 1;
+        return true;
+    }
+
+    if (!OafNativeKernelExecutor.IsNativeCompilerAvailable())
+    {
+        Console.WriteLine("No C compiler found for publish. Install a compiler, or use `oaf build` for bytecode artifacts.");
+        exitCode = 1;
+        return true;
+    }
+
+    var outputPath = ResolvePublishOutputPath(options.OutputPath, options.Input!);
+    var outputDirectory = Path.GetDirectoryName(outputPath);
+    if (!string.IsNullOrEmpty(outputDirectory))
+    {
+        Directory.CreateDirectory(outputDirectory);
+    }
+
+    try
+    {
+        using var nativeHandle = OafNativeKernelExecutor.CreateHandle(result.BytecodeProgram);
+        File.Copy(nativeHandle.ExecutablePath, outputPath, overwrite: true);
+        EnsureExecutablePermissions(outputPath);
+        Console.WriteLine($"Published executable: {Path.GetFullPath(outputPath)}");
+        return true;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Publish failed: {ex.Message}");
+        exitCode = 1;
+        return true;
+    }
+}
+
+static bool HandleSdkVersion(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    var oafHome = ResolveOafHomePath();
+    var versionsDir = Path.Combine(oafHome, "versions");
+    var currentVersionFilePath = Path.Combine(oafHome, "current.txt");
+    var installedVersions = GetInstalledVersions(versionsDir);
+
+    if (args.Length == 1)
+    {
+        Console.WriteLine($"CLI version: {GetCliVersion()}");
+        Console.WriteLine($"Install root: {oafHome}");
+
+        if (installedVersions.Count == 0)
+        {
+            Console.WriteLine("Installed versions: (none)");
+            return true;
+        }
+
+        var currentVersion = ReadCurrentVersion(currentVersionFilePath);
+        Console.WriteLine("Installed versions:");
+        foreach (var version in installedVersions)
+        {
+            var marker = string.Equals(version, currentVersion, StringComparison.OrdinalIgnoreCase) ? "*" : " ";
+            Console.WriteLine($"{marker} {version}");
+        }
+
+        if (string.IsNullOrWhiteSpace(currentVersion))
+        {
+            Console.WriteLine("Current version: (not set)");
+        }
+        else
+        {
+            Console.WriteLine($"Current version: {currentVersion}");
+        }
+
+        return true;
+    }
+
+    if (args.Length != 2)
+    {
+        Console.WriteLine("Usage: oaf version [<version>]");
+        exitCode = 1;
+        return true;
+    }
+
+    if (installedVersions.Count == 0)
+    {
+        Console.WriteLine($"No installed versions were found in '{versionsDir}'.");
+        exitCode = 1;
+        return true;
+    }
+
+    var requestedVersion = args[1];
+    var matchedVersion = ResolveRequestedVersion(requestedVersion, installedVersions);
+    if (matchedVersion is null)
+    {
+        Console.WriteLine($"Version '{requestedVersion}' is not installed.");
+        Console.WriteLine($"Installed versions: {string.Join(", ", installedVersions)}");
+        exitCode = 1;
+        return true;
+    }
+
+    WriteCurrentVersion(currentVersionFilePath, matchedVersion);
+    Console.WriteLine($"Active Oaf version set to {matchedVersion}.");
+    return true;
 }
 
 static bool HandleSdkClean(string[] args, out int exitCode)
@@ -258,19 +422,41 @@ static CompilationResult CompileSdkInput(string inputArg)
 
 static string ResolveBuildOutputPath(string? outputOption, string inputArg, SdkRuntimeMode runtimeMode)
 {
-    var baseName = File.Exists(inputArg)
-        ? Path.GetFileNameWithoutExtension(inputArg)
-        : "snippet";
-    var executableSuffix = OperatingSystem.IsWindows() ? ".exe" : string.Empty;
-    var defaultFileName = runtimeMode == SdkRuntimeMode.Native
-        ? $"{baseName}{executableSuffix}"
-        : $"{baseName}.bytecode.txt";
+    var defaultFileName = ResolveDefaultArtifactFileName(inputArg, runtimeMode);
 
     if (string.IsNullOrWhiteSpace(outputOption))
     {
         return Path.Combine(".oaf", "build", defaultFileName);
     }
 
+    return ResolveOutputPathWithDefault(outputOption, defaultFileName);
+}
+
+static string ResolvePublishOutputPath(string? outputOption, string inputArg)
+{
+    var defaultFileName = ResolveDefaultArtifactFileName(inputArg, SdkRuntimeMode.Native);
+
+    if (string.IsNullOrWhiteSpace(outputOption))
+    {
+        return Path.Combine(".oaf", "publish", defaultFileName);
+    }
+
+    return ResolveOutputPathWithDefault(outputOption, defaultFileName);
+}
+
+static string ResolveDefaultArtifactFileName(string inputArg, SdkRuntimeMode runtimeMode)
+{
+    var baseName = File.Exists(inputArg)
+        ? Path.GetFileNameWithoutExtension(inputArg)
+        : "snippet";
+    var executableSuffix = OperatingSystem.IsWindows() ? ".exe" : string.Empty;
+    return runtimeMode == SdkRuntimeMode.Native
+        ? $"{baseName}{executableSuffix}"
+        : $"{baseName}.bytecode.txt";
+}
+
+static string ResolveOutputPathWithDefault(string? outputOption, string defaultFileName)
+{
     var path = outputOption!;
     var endsWithSeparator = path.EndsWith(Path.DirectorySeparatorChar)
         || path.EndsWith(Path.AltDirectorySeparatorChar);
@@ -285,6 +471,157 @@ static string ResolveBuildOutputPath(string? outputOption, string inputArg, SdkR
     }
 
     return path;
+}
+
+static void EnsureExecutablePermissions(string outputPath)
+{
+    if (OperatingSystem.IsWindows())
+    {
+        return;
+    }
+
+    try
+    {
+        var mode = File.GetUnixFileMode(outputPath);
+        mode |= UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+        File.SetUnixFileMode(outputPath, mode);
+    }
+    catch
+    {
+        // Best-effort only; publish still succeeds if chmod is unavailable.
+    }
+}
+
+static string GetCliVersion()
+{
+    var assembly = typeof(SdkCommandOptions).Assembly;
+    var informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+    if (!string.IsNullOrWhiteSpace(informationalVersion))
+    {
+        var plusIndex = informationalVersion.IndexOf('+');
+        return plusIndex >= 0
+            ? informationalVersion[..plusIndex]
+            : informationalVersion;
+    }
+
+    var assemblyVersion = assembly.GetName().Version;
+    return assemblyVersion?.ToString() ?? "unknown";
+}
+
+static string ResolveOafHomePath()
+{
+    var configuredPath = Environment.GetEnvironmentVariable("OAF_HOME");
+    if (!string.IsNullOrWhiteSpace(configuredPath))
+    {
+        return configuredPath;
+    }
+
+    var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    return Path.Combine(userHome, ".oaf");
+}
+
+static string ReadCurrentVersion(string currentVersionFilePath)
+{
+    if (!File.Exists(currentVersionFilePath))
+    {
+        return string.Empty;
+    }
+
+    return File.ReadAllText(currentVersionFilePath).Trim();
+}
+
+static void WriteCurrentVersion(string currentVersionFilePath, string version)
+{
+    var directory = Path.GetDirectoryName(currentVersionFilePath);
+    if (!string.IsNullOrWhiteSpace(directory))
+    {
+        Directory.CreateDirectory(directory);
+    }
+
+    File.WriteAllText(currentVersionFilePath, $"{version}{Environment.NewLine}");
+}
+
+static List<string> GetInstalledVersions(string versionsDir)
+{
+    var executableName = OperatingSystem.IsWindows() ? "oaf.exe" : "oaf";
+    var versions = new List<string>();
+    if (!Directory.Exists(versionsDir))
+    {
+        return versions;
+    }
+
+    foreach (var candidatePath in Directory.EnumerateDirectories(versionsDir))
+    {
+        var versionName = Path.GetFileName(candidatePath);
+        if (string.IsNullOrWhiteSpace(versionName))
+        {
+            continue;
+        }
+
+        var binaryPath = Path.Combine(candidatePath, "bin", executableName);
+        if (File.Exists(binaryPath))
+        {
+            versions.Add(versionName);
+        }
+    }
+
+    versions.Sort(CompareVersionTokensDescending);
+    return versions;
+}
+
+static string? ResolveRequestedVersion(string requestedVersion, IReadOnlyList<string> installedVersions)
+{
+    var requestedToken = NormalizeVersionToken(requestedVersion);
+
+    foreach (var installed in installedVersions)
+    {
+        if (string.Equals(NormalizeVersionToken(installed), requestedToken, StringComparison.OrdinalIgnoreCase))
+        {
+            return installed;
+        }
+    }
+
+    var prefixedMatches = installedVersions
+        .Where((installed) =>
+            NormalizeVersionToken(installed).StartsWith($"{requestedToken}.", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+    if (prefixedMatches.Count > 0)
+    {
+        prefixedMatches.Sort(CompareVersionTokensDescending);
+        return prefixedMatches[0];
+    }
+
+    return null;
+}
+
+static string NormalizeVersionToken(string version)
+{
+    return version.Trim().TrimStart('v', 'V');
+}
+
+static int CompareVersionTokensDescending(string left, string right)
+{
+    var leftToken = NormalizeVersionToken(left);
+    var rightToken = NormalizeVersionToken(right);
+
+    var leftIsSemver = Version.TryParse(leftToken, out var leftVersion);
+    var rightIsSemver = Version.TryParse(rightToken, out var rightVersion);
+    if (leftIsSemver && rightIsSemver)
+    {
+        return rightVersion!.CompareTo(leftVersion);
+    }
+
+    if (leftIsSemver)
+    {
+        return -1;
+    }
+
+    if (rightIsSemver)
+    {
+        return 1;
+    }
+
+    return string.Compare(right, left, StringComparison.OrdinalIgnoreCase);
 }
 
 static bool TryNormalizeSdkRuntime(string runtimeRaw, out SdkRuntimeMode runtimeMode, out string? errorMessage)
@@ -386,6 +723,7 @@ static bool TryParseSdkCommandOptions(
             }
 
             options.Runtime = args[++i];
+            options.RuntimeProvided = true;
             continue;
         }
 
@@ -446,8 +784,12 @@ static void PrintUsage()
 {
     Console.WriteLine("OafLang SDK/CLI");
     Console.WriteLine("Usage:");
+    Console.WriteLine("  oaf                           (runs ./main.oaf when present)");
+    Console.WriteLine("  oaf --version");
+    Console.WriteLine("  oaf version [<version>]");
     Console.WriteLine("  oaf run <file-or-source> [-r vm|native] [--ast] [--ir] [--bytecode]");
     Console.WriteLine("  oaf build <file-or-source> [-o <output-path>] [-r vm|native] [--ast] [--ir] [--bytecode]");
+    Console.WriteLine("  oaf publish <file-or-source> [-o <output-path>] [-r native] [--ast] [--ir] [--bytecode]");
     Console.WriteLine("  oaf clean [-o <path>]");
     Console.WriteLine("  oaf --self-test");
     Console.WriteLine("  oaf --pkg-init [manifestPath]");
@@ -732,6 +1074,8 @@ sealed class SdkCommandOptions
     public string? OutputPath { get; set; }
 
     public string Runtime { get; set; } = "vm";
+
+    public bool RuntimeProvided { get; set; }
 
     public bool ShowAst { get; set; }
 

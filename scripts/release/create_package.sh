@@ -13,15 +13,26 @@ echo "Creating release package '${PACKAGE_NAME}'..."
 rm -rf "${STAGING_DIR}"
 mkdir -p "${STAGING_DIR}/bin"
 
+if [[ -z "${RUNTIME_ID}" ]]; then
+  RUNTIME_ID="$(dotnet --info 2>/dev/null | awk -F': *' '/RID:/{print $2; exit}')"
+fi
+
+if [[ -z "${RUNTIME_ID}" ]]; then
+  echo "Unable to determine Runtime Identifier (RID)." >&2
+  echo "Pass one explicitly, e.g. osx-arm64, osx-x64, linux-x64, win-x64." >&2
+  exit 1
+fi
+
 PUBLISH_ARGS=(
   "${ROOT_DIR}/OafLang.csproj"
   "--configuration" "Release"
   "--output" "${STAGING_DIR}/bin"
+  "--runtime" "${RUNTIME_ID}"
+  "--self-contained" "true"
+  "-p:PublishSingleFile=true"
+  "-p:DebugSymbols=false"
+  "-p:DebugType=None"
 )
-
-if [[ -n "${RUNTIME_ID}" ]]; then
-  PUBLISH_ARGS+=("--runtime" "${RUNTIME_ID}" "--self-contained" "false")
-fi
 
 dotnet publish "${PUBLISH_ARGS[@]}"
 
@@ -31,8 +42,18 @@ for path in docs examples SpecOverview.md SpecSyntax.md SpecRuntime.md SpecFileS
   fi
 done
 
+if [[ -f "${ROOT_DIR}/scripts/release/install.sh" ]]; then
+  cp "${ROOT_DIR}/scripts/release/install.sh" "${STAGING_DIR}/install.sh"
+  chmod +x "${STAGING_DIR}/install.sh"
+fi
+
+if [[ -f "${ROOT_DIR}/scripts/release/install.ps1" ]]; then
+  cp "${ROOT_DIR}/scripts/release/install.ps1" "${STAGING_DIR}/install.ps1"
+fi
+
 cat > "${STAGING_DIR}/README.txt" <<EOF
 OafLang Release Package ${VERSION}
+Target Runtime: ${RUNTIME_ID}
 
 Contents:
 - bin/: Published CLI and runtime assets
@@ -41,9 +62,19 @@ Contents:
 - Spec*.md: Language specification documents
 
 Quick start:
-1. Run 'dotnet --info' to verify your local SDK/runtime.
-2. Execute './bin/OafLang --self-test' to validate installation.
-3. Compile source: './bin/OafLang "flux x = 1; return x;" --bytecode'
+1. Execute './bin/oaf --self-test' to validate installation.
+2. Run a file: './bin/oaf run ./examples/basics/01_hello_and_return.oaf'
+3. Build bytecode artifact: './bin/oaf build ./examples/basics/01_hello_and_return.oaf'
+4. Publish executable: './bin/oaf publish ./examples/applications/01_sum_accumulator.oaf'
+
+Install globally:
+- macOS/Linux: './install.sh'
+- Windows (PowerShell): '.\install.ps1'
+
+Version management:
+- Active version: './bin/oaf --version' (or 'oaf --version' after install)
+- List installed versions: 'oaf version'
+- Switch version: 'oaf version <num>'
 EOF
 
 mkdir -p "${DIST_DIR}"
