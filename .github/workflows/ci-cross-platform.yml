@@ -1,10 +1,6 @@
 name: ci-cross-platform
 
 on:
-  push:
-    branches:
-      - main
-      - master
   pull_request:
 
 jobs:
