@@ -21,7 +21,7 @@
 The bytecode VM can execute the generated entry function:
 
 ```bash
-dotnet run -- ./examples/applications/01_sum_accumulator.oaf --run-bytecode
+oaf run ./examples/applications/01_sum_accumulator.oaf --run-bytecode
 ```
 
 ## Tooling Modules
@@ -54,7 +54,7 @@ dotnet run -- ./examples/applications/01_sum_accumulator.oaf --run-bytecode
 You can enforce a regression gate with:
 
 ```bash
-dotnet run -- --benchmark 200 --max-mean-ratio 5.0 --fail-on-regression
+oaf --benchmark 200 --max-mean-ratio 5.0 --fail-on-regression
 ```
 
 ## Native Language Comparison Benchmarks
@@ -70,17 +70,17 @@ This runs identical kernels in all three languages (`sum_xor`, `prime_trial`, `a
 To run Oaf kernels only:
 
 ```bash
-dotnet run -- --benchmark-kernels --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
+oaf --benchmark-kernels --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
 ```
 
 To run Oaf kernels as generated native binaries:
 
 ```bash
-dotnet run -- --benchmark-kernels --native --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
+oaf --benchmark-kernels --native --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
 ```
 
 To run Oaf kernels with tiered VM-to-native promotion:
 
 ```bash
-dotnet run -- --benchmark-kernels --tiered --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
+oaf --benchmark-kernels --tiered --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
 ```

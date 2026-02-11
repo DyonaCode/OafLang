@@ -1,52 +1,71 @@
 # Getting Started
 
-## Prerequisites
+## Install
 
-- .NET SDK 10+
-- CMake 3.25+
-- C compiler (Clang/GCC) for runtime smoke targets
+Use a release package and run the installer:
 
-## Build and Verify
+- macOS/Linux: `./install.sh`
+- Windows PowerShell: `./install.ps1`
+
+Then verify:
 
 ```bash
-dotnet build
-dotnet run -- --self-test
-cmake -S . -B out/cmake-build
-cmake --build out/cmake-build
+oaf --version
+oaf version
 ```
 
-## Run a Program
+For source-based setup, see `../DevelopmentEnvironment.md`.
 
-Inline source:
+## First Program
 
-```bash
-dotnet run -- "flux x = 2; return x + 3;" --run-bytecode
+Create `main.oaf`:
+
+```oaf
+flux x = 2;
+return x + 3;
 ```
 
-From file:
+Run:
 
 ```bash
-dotnet run -- ./examples/basics/01_hello_and_return.oaf --run-bytecode
+oaf
 ```
 
-## Inspect Compiler Stages
+Equivalent explicit form:
 
 ```bash
-dotnet run -- ./examples/basics/02_control_flow_if_else.oaf --ast
-dotnet run -- ./examples/basics/02_control_flow_if_else.oaf --ir
-dotnet run -- ./examples/basics/02_control_flow_if_else.oaf --bytecode
+oaf run ./main.oaf
 ```
 
-## Use Built-in Tooling
+## Build and Publish
+
+Build artifact:
 
 ```bash
-dotnet run -- --pkg-init packages.txt
-dotnet run -- --pkg-add stdlib.core@1.0.0 packages.txt
-dotnet run -- --pkg-install packages.txt
+oaf build ./main.oaf
+```
 
-dotnet run -- --gen-docs ./examples/basics/01_hello_and_return.oaf --out ./docs/generated/hello.md
+Publish native executable:
 
-dotnet run -- --format ./examples/basics/01_hello_and_return.oaf --write
+```bash
+oaf publish ./examples/applications/01_sum_accumulator.oaf
+```
 
-dotnet run -- --benchmark 200
+## Compiler Introspection
+
+```bash
+oaf run ./examples/basics/02_control_flow_if_else.oaf --ast
+oaf run ./examples/basics/02_control_flow_if_else.oaf --ir
+oaf run ./examples/basics/02_control_flow_if_else.oaf --bytecode
+```
+
+## Tooling Quick Hits
+
+```bash
+oaf --pkg-init packages.txt
+oaf --pkg-add stdlib.core@1.0.0 packages.txt
+oaf --pkg-install packages.txt
+oaf --gen-docs ./examples/basics/01_hello_and_return.oaf --out ./docs/generated/hello.md
+oaf --format ./examples/basics/01_hello_and_return.oaf --write
+oaf --benchmark 200
 ```

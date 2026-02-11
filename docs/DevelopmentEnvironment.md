@@ -10,18 +10,18 @@
 
 ```bash
 dotnet build
-dotnet run -- --self-test
+oaf --self-test
 ```
 
-## Install Local SDK Alias (`oaf`)
+## Install Local CLI (Release Package)
 
 ```bash
-./scripts/sdk/install_local_tool.sh 0.1.1
-export PATH="$(pwd)/.oaf/sdk-tools:$PATH"
-oaf run "return 42;" -r vm
-oaf build "return 42;" -o ./out/oaf -r native
-oaf clean -o ./out/oaf
+./install.sh
+oaf --version
+oaf version
 ```
+
+For full end-user setup and first program workflow, see `guides/GettingStarted.md`.
 
 ## CMake Runtime Targets
 
@@ -43,20 +43,19 @@ cmake --build out/cmake-build
 
 - Frontend compiler code lives under `src/Frontend/Compiler/`
 - Runtime C code lives under `src/Runtime/`
-- Self-tests currently run via `dotnet run -- --self-test`
+- Self-tests can be run via `oaf --self-test`
 
 ## Tooling Commands
 
 ```bash
-dotnet run -- --pkg-init packages.txt
-dotnet run -- --pkg-add core.math@1.0.0 packages.txt
-dotnet run -- --pkg-install packages.txt
-dotnet run -- --gen-docs ./sample.oaf --out ./sample.md
-dotnet run -- --format ./sample.oaf --write
-dotnet run -- --benchmark 200
-dotnet run -- --benchmark-kernels --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
-dotnet run -- --benchmark-kernels --tiered --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
-dotnet run -- --benchmark-kernels --native --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
-./scripts/benchmark/run_c_rust_benchmarks.sh --iterations 5 --oaf-mode tiered
-./scripts/benchmark/run_c_rust_benchmarks.sh --iterations 5 --oaf-mode both --oaf-cli ./.oaf/sdk-tools/oaf
+oaf --pkg-init packages.txt
+oaf --pkg-add core.math@1.0.0 packages.txt
+oaf --pkg-install packages.txt
+oaf --gen-docs ./sample.oaf --out ./sample.md
+oaf --format ./sample.oaf --write
+oaf --benchmark 200
+oaf --benchmark-kernels --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
+oaf --benchmark-kernels --tiered --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
+oaf --benchmark-kernels --native --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
+./scripts/benchmark/run_c_rust_benchmarks.sh --iterations 5 --oaf-mode both --oaf-cli oaf
 ```

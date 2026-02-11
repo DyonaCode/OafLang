@@ -1,28 +1,36 @@
 # Oaf Documentation
 
-This folder contains the actively maintained project documentation for the current compiler/runtime implementation.
+This directory is the source of truth for implementation-facing documentation.
 
-## Documentation Map
+## Start Here
+
+- Project overview and quickstart: `../README.md`
+- First-run guide: `guides/GettingStarted.md`
+- CLI command reference: `reference/CLIReference.md`
+
+## Guides
+
+- `guides/GettingStarted.md`
+  End-user setup and first workflows.
+- `guides/CompilerAndToolingGuide.md`
+  Compiler pipeline and tooling architecture.
+- `DevelopmentEnvironment.md`
+  Contributor-focused local environment setup.
+- `CodingStandards.md`
+  Coding expectations and conventions.
+
+## Reference
 
 - `LanguageSpecification.md`
-  Canonical language specification for the currently implemented syntax and semantics.
-- `guides/`
-  Step-by-step programming guides for writing and running Oaf programs.
-- `reference/`
-  API-style reference docs for CLI commands, runtime modules, and standard library modules.
-- `../examples/`
-  Runnable example programs, tutorials, and sample applications.
-- `../benchmarks/`
-  Cross-language benchmark kernels and comparison scripts (C and Rust).
+  Current language syntax and semantics.
+- `reference/CLIReference.md`
+  All `oaf` command surfaces.
+- `reference/RuntimeAndStdlibReference.md`
+  Runtime and standard library reference.
 
-## Existing Design Specs
+## Related Material
 
-The original design and architecture specs are kept at repository root:
-
-- `SpecOverview.md`
-- `SpecSyntax.md`
-- `SpecRuntime.md`
-- `SpecFileStructure.md`
-- `SpecRoadmap.md`
-
-These remain useful for long-term direction, while docs in this folder are implementation-focused and kept aligned with passing tests.
+- Examples: `../examples/`
+- Benchmarks: `../benchmarks/`
+- Release notes: `../release/RELEASE_NOTES_v0.1.0.md`
+- Announcement: `../release/ANNOUNCEMENT_v0.1.0.md`
