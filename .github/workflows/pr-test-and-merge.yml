@@ -138,7 +138,13 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: Run self-test suite
-        run: dotnet run --configuration Release -- --self-test
+        shell: bash
+        run: dotnet run --configuration Release -- --self-test | tee self-test-output.txt
+
+      - name: Summarize parity checks
+        if: always()
+        shell: bash
+        run: bash scripts/ci/append_parity_summary.sh self-test-output.txt "pr-${{ matrix.pr_number }} / ${{ matrix.os }}"
 
   c_runtime_smoke:
     if: needs.discover_prs.outputs.eligible_count != '0'
@@ -222,11 +228,48 @@ jobs:
           package_root="${temp_dir}/oaf-${version}"
           cli="${package_root}/bin/oaf"
 
-          while IFS= read -r -d '' example; do
-            relative="${example#${package_root}/}"
-            echo "Running packaged example: ${relative}"
-            "${cli}" run "${example}"
-          done < <(find "${package_root}/examples" -type f -name '*.oaf' -print0 | sort -z)
+          "${cli}" test "${package_root}/examples" -r vm --compilation-target bytecode
+          "${cli}" test "${package_root}/examples" -r vm --compilation-target mlir
+
+      - name: Validate scaffold workflow
+        run: |
+          set -euo pipefail
+          version="0.0.0-pr${{ matrix.pr_number }}"
+          archive="dist/oaf-${version}.tar.gz"
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "${temp_dir}"' EXIT
+
+          tar -xzf "${archive}" -C "${temp_dir}"
+          package_root="${temp_dir}/oaf-${version}"
+          cli="${package_root}/bin/oaf"
+          project_dir="${temp_dir}/scaffold-smoke"
+
+          "${cli}" new "${project_dir}"
+          "${cli}" test "${project_dir}" -r vm --compilation-target bytecode
+          "${cli}" build "${project_dir}/main.oaf" -o "${project_dir}/.oaf/build"
+          "${cli}" publish "${project_dir}/main.oaf" -o "${project_dir}/.oaf/publish"
+
+      - name: Validate installer and version shim
+        run: |
+          set -euo pipefail
+          version="0.0.0-pr${{ matrix.pr_number }}"
+          archive="dist/oaf-${version}.tar.gz"
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "${temp_dir}"' EXIT
+
+          tar -xzf "${archive}" -C "${temp_dir}"
+          package_root="${temp_dir}/oaf-${version}"
+          temp_home="${temp_dir}/home"
+          install_dir="${temp_dir}/bin"
+          oaf_home="${temp_dir}/oaf-home"
+          mkdir -p "${temp_home}"
+
+          HOME="${temp_home}" OAF_INSTALL_DIR="${install_dir}" OAF_HOME="${oaf_home}" \
+            "${package_root}/install.sh" "${version}"
+
+          env PATH="${install_dir}:${PATH}" HOME="${temp_home}" OAF_HOME="${oaf_home}" oaf --version
+          env PATH="${install_dir}:${PATH}" HOME="${temp_home}" OAF_HOME="${oaf_home}" oaf version
+          env PATH="${install_dir}:${PATH}" HOME="${temp_home}" OAF_HOME="${oaf_home}" oaf version "${version}"
 
   merge_pr:
     if: needs.discover_prs.outputs.eligible_count != '0'

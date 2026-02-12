@@ -11,7 +11,8 @@ public static class LexerTests
         [
             ("tokenizes_keywords_operators_and_literals", TokenizesKeywordsOperatorsAndLiterals),
             ("skips_single_and_multiline_comments", SkipsComments),
-            ("reports_unterminated_string", ReportsUnterminatedString)
+            ("reports_unterminated_string", ReportsUnterminatedString),
+            ("tokenizes_module_and_import_keywords", TokenizesModuleAndImportKeywords)
         ];
     }
 
@@ -73,5 +74,29 @@ public static class LexerTests
         _ = lexer.Lex();
 
         TestAssertions.True(lexer.Diagnostics.HasErrors, "Expected lexer diagnostics for unterminated string.");
+    }
+
+    private static void TokenizesModuleAndImportKeywords()
+    {
+        const string source = "module pkg.math; import pkg.core;";
+        var lexer = new Frontend.Compiler.Lexer.Lexer(source);
+        var tokens = lexer.Lex().Select(static token => token.Kind).ToArray();
+
+        var expected = new[]
+        {
+            TokenKind.ModuleKeyword,
+            TokenKind.IdentifierToken,
+            TokenKind.DotToken,
+            TokenKind.IdentifierToken,
+            TokenKind.SemicolonToken,
+            TokenKind.ImportKeyword,
+            TokenKind.IdentifierToken,
+            TokenKind.DotToken,
+            TokenKind.IdentifierToken,
+            TokenKind.SemicolonToken,
+            TokenKind.EndOfFileToken
+        };
+
+        TestAssertions.SequenceEqual(expected, tokens);
     }
 }

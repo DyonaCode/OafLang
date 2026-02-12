@@ -39,6 +39,8 @@ public sealed class OwnershipAnalyzer
 
     private readonly DiagnosticBag _diagnostics;
     private readonly Stack<Dictionary<string, OwnershipVariable>> _scopes = new();
+    private readonly HashSet<string> _importedModules = new(StringComparer.Ordinal);
+    private string? _currentModule;
 
     public OwnershipAnalyzer(DiagnosticBag diagnostics)
     {
@@ -47,6 +49,8 @@ public sealed class OwnershipAnalyzer
 
     public void Analyze(CompilationUnitSyntax compilationUnit)
     {
+        _currentModule = null;
+        _importedModules.Clear();
         EnterScope();
 
         foreach (var statement in compilationUnit.Statements)
@@ -115,6 +119,15 @@ public sealed class OwnershipAnalyzer
             case ContinueStatementSyntax:
             case ReturnStatementSyntax:
                 break;
+
+            case ModuleDeclarationStatementSyntax moduleDeclaration:
+                _currentModule = moduleDeclaration.ModuleName;
+                _importedModules.Clear();
+                break;
+
+            case ImportStatementSyntax importStatement:
+                _importedModules.Add(importStatement.ModuleName);
+                break;
         }
     }
 
@@ -124,7 +137,8 @@ public sealed class OwnershipAnalyzer
             ? IsMoveType(declaration.DeclaredType)
             : InferExpressionMoveType(declaration.Initializer);
 
-        var variable = Declare(declaration.Identifier, declaration.IsMutable, isMoveType, declaration.Span);
+        var declarationName = ResolveDeclarationName(declaration.Identifier);
+        var variable = Declare(declarationName, declaration.IsMutable, isMoveType, declaration.Span);
         if (variable is null)
         {
             AnalyzeExpression(declaration.Initializer);
@@ -132,7 +146,7 @@ public sealed class OwnershipAnalyzer
         }
 
         if (declaration.Initializer is NameExpressionSyntax sourceName
-            && TryLookup(sourceName.Identifier, out var source)
+            && TryLookupWithContext(sourceName.Identifier, out var source)
             && source.IsMoveType
             && variable.IsMoveType)
         {
@@ -155,7 +169,7 @@ public sealed class OwnershipAnalyzer
 
     private void AnalyzeAssignment(AssignmentStatementSyntax assignment)
     {
-        if (!TryLookup(assignment.Identifier, out var target))
+        if (!TryLookupWithContext(assignment.Identifier, out var target))
         {
             AnalyzeExpression(assignment.Expression);
             return;
@@ -174,7 +188,7 @@ public sealed class OwnershipAnalyzer
 
         if (target.IsMoveType
             && assignment.Expression is NameExpressionSyntax sourceName
-            && TryLookup(sourceName.Identifier, out var source)
+            && TryLookupWithContext(sourceName.Identifier, out var source)
             && source.IsMoveType)
         {
             if (string.Equals(source.Name, target.Name, StringComparison.Ordinal))
@@ -231,7 +245,7 @@ public sealed class OwnershipAnalyzer
 
     private void AnalyzeNameExpression(NameExpressionSyntax nameExpression)
     {
-        if (!TryLookup(nameExpression.Identifier, out var variable) || !variable.IsMoveType)
+        if (!TryLookupWithContext(nameExpression.Identifier, out var variable) || !variable.IsMoveType)
         {
             return;
         }
@@ -298,6 +312,45 @@ public sealed class OwnershipAnalyzer
         return false;
     }
 
+    private bool TryLookupWithContext(string name, out OwnershipVariable variable)
+    {
+        if (name.Contains('.', StringComparison.Ordinal))
+        {
+            var moduleName = ExtractModuleName(name);
+            if (!IsModuleAccessible(moduleName))
+            {
+                variable = null!;
+                return false;
+            }
+
+            return TryLookup(name, out variable);
+        }
+
+        if (TryLookup(name, out variable))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentModule))
+        {
+            if (TryLookup(QualifyTopLevelName(_currentModule, name), out variable))
+            {
+                return true;
+            }
+        }
+
+        foreach (var importedModule in _importedModules)
+        {
+            if (TryLookup(QualifyTopLevelName(importedModule, name), out variable))
+            {
+                return true;
+            }
+        }
+
+        variable = null!;
+        return false;
+    }
+
     private void EnterScope()
     {
         _scopes.Push(new Dictionary<string, OwnershipVariable>(StringComparer.Ordinal));
@@ -331,11 +384,49 @@ public sealed class OwnershipAnalyzer
         return expression switch
         {
             LiteralExpressionSyntax literal => literal.Value is string,
-            NameExpressionSyntax name when TryLookup(name.Identifier, out var variable) => variable.IsMoveType,
+            NameExpressionSyntax name when TryLookupWithContext(name.Identifier, out var variable) => variable.IsMoveType,
             CastExpressionSyntax cast => IsMoveType(cast.TargetType),
             ParenthesizedExpressionSyntax parenthesized => InferExpressionMoveType(parenthesized.Expression),
             _ => false
         };
+    }
+
+    private string ResolveDeclarationName(string identifier)
+    {
+        if (_scopes.Count == 1 && !string.IsNullOrWhiteSpace(_currentModule))
+        {
+            return QualifyTopLevelName(_currentModule, identifier);
+        }
+
+        return identifier;
+    }
+
+    private static string QualifyTopLevelName(string? moduleName, string symbolName)
+    {
+        if (string.IsNullOrWhiteSpace(moduleName))
+        {
+            return symbolName;
+        }
+
+        return $"{moduleName}.{symbolName}";
+    }
+
+    private bool IsModuleAccessible(string moduleName)
+    {
+        if (string.Equals(moduleName, _currentModule, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return _importedModules.Contains(moduleName);
+    }
+
+    private static string ExtractModuleName(string qualifiedName)
+    {
+        var lastDot = qualifiedName.LastIndexOf('.');
+        return lastDot <= 0
+            ? string.Empty
+            : qualifiedName[..lastDot];
     }
 
     private bool IsCopyTypeName(string typeName)

@@ -50,7 +50,11 @@ cmake --build out/cmake-build
 ```bash
 oaf --pkg-init packages.txt
 oaf --pkg-add core.math@1.0.0 packages.txt
+oaf --pkg-add core.runtime@^1.2.0 packages.txt
 oaf --pkg-install packages.txt
+oaf --pkg-verify packages.txt
+# run/build/publish compose only imported package modules from installed content
+# package module files under content/ must match their module path (content/pkg/math.oaf => module pkg.math;)
 oaf --gen-docs ./sample.oaf --out ./sample.md
 oaf --format ./sample.oaf --write
 oaf --benchmark 200

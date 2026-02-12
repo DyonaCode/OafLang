@@ -1,0 +1,16 @@
+flux n = 5000000;
+flux i = 0;
+flux state = 123456789;
+flux checksum = 0;
+
+loop i < n => {
+    state = ((state * 1103515245) + 12345) % 2147483647;
+    if (state % 2) == 0 => {
+        checksum += state;
+    } -> {
+        checksum = checksum ^ state;
+    }
+    i += 1;
+}
+
+return checksum ^ state;

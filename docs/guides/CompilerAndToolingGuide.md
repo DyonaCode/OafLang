@@ -34,6 +34,17 @@ oaf run ./examples/applications/01_sum_accumulator.oaf --run-bytecode
   - `--pkg-add`
   - `--pkg-remove`
   - `--pkg-install`
+  - `--pkg-verify`
+
+- Optional source index file: `packages.sources` (one index path per line; `#` comments allowed)
+- Optional env override: `OAF_PACKAGE_INDEX=/absolute/path/to/index.json`
+- Source index entries define `name`, `version`, `artifact`, `sha256`
+- Source index entries can include transitive `dependencies` as `name@selector` strings
+- Artifacts (`.zip`, `.nupkg`, `.oafpkg`) are hash-verified then extracted under `.oaf/packages/<name>/<version>/content`
+- Package module files must declare a module that matches their content-relative path (`content/pkg/math.oaf` => `module pkg.math;`)
+- Manifest selectors support exact/range syntax (`1.2.3`, `^1.0.0`, `~1.4.0`, `>=1.0.0 <2.0.0`, `1.5.*`)
+- Installer resolves transitive dependencies and fails when constraints conflict
+- Compile/run/build/publish compose only explicitly imported package modules (plus transitive imports) from the nearest `packages.lock` context
 
 ### Documentation Generation
 
@@ -65,7 +76,7 @@ For direct Oaf vs C vs Rust algorithm comparisons, run:
 ./scripts/benchmark/run_c_rust_benchmarks.sh --oaf-mode tiered
 ```
 
-This runs identical kernels in all three languages (`sum_xor`, `prime_trial`, `affine_grid`) and writes a combined CSV under `benchmarks/results/`.
+This runs identical kernels in all three languages (`sum_xor`, `prime_trial`, `affine_grid`, `branch_mix`, `gcd_fold`, `lcg_stream`) and writes a combined CSV under `benchmarks/results/`.
 
 To run Oaf kernels only:
 

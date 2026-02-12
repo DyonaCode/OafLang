@@ -142,3 +142,29 @@ public sealed class ContinueStatementSyntax : StatementSyntax
 
     public override SyntaxNodeKind Kind => SyntaxNodeKind.ContinueStatement;
 }
+
+public sealed class ModuleDeclarationStatementSyntax : StatementSyntax
+{
+    public ModuleDeclarationStatementSyntax(string moduleName, SourceSpan span)
+        : base(span)
+    {
+        ModuleName = moduleName;
+    }
+
+    public string ModuleName { get; }
+
+    public override SyntaxNodeKind Kind => SyntaxNodeKind.ModuleDeclarationStatement;
+}
+
+public sealed class ImportStatementSyntax : StatementSyntax
+{
+    public ImportStatementSyntax(string moduleName, SourceSpan span)
+        : base(span)
+    {
+        ModuleName = moduleName;
+    }
+
+    public string ModuleName { get; }
+
+    public override SyntaxNodeKind Kind => SyntaxNodeKind.ImportStatement;
+}

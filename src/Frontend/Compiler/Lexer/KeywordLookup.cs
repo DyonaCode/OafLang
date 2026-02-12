@@ -24,6 +24,8 @@ internal static class KeywordLookup
             ["break"] = TokenKind.BreakKeyword,
             ["continue"] = TokenKind.ContinueKeyword,
             ["when"] = TokenKind.WhenKeyword,
+            ["module"] = TokenKind.ModuleKeyword,
+            ["import"] = TokenKind.ImportKeyword,
             ["true"] = TokenKind.TrueKeyword,
             ["false"] = TokenKind.FalseKeyword
         };

@@ -10,7 +10,8 @@ public static class CompilerDriverPerformanceTests
         return
         [
             ("reuses_cached_compilation_for_identical_source", ReusesCachedCompilationForIdenticalSource),
-            ("can_disable_compilation_cache", CanDisableCompilationCache)
+            ("can_disable_compilation_cache", CanDisableCompilationCache),
+            ("cache_is_partitioned_by_compilation_target", CacheIsPartitionedByCompilationTarget)
         ];
     }
 
@@ -37,6 +38,23 @@ public static class CompilerDriverPerformanceTests
 
         TestAssertions.False(ReferenceEquals(first, second), "Expected cache-disabled compiler to produce fresh result instances.");
         TestAssertions.Equal(0, driver.CacheHits);
+        TestAssertions.Equal(2, driver.CacheMisses);
+    }
+
+    private static void CacheIsPartitionedByCompilationTarget()
+    {
+        var driver = new CompilerDriver(enableCompilationCache: true, cacheCapacity: 8);
+        const string source = "flux value = 1 + 2; return value;";
+
+        var bytecode = driver.CompileSource(source, CompilerCompilationTarget.Bytecode);
+        var mlir = driver.CompileSource(source, CompilerCompilationTarget.Mlir);
+        var bytecodeCached = driver.CompileSource(source, CompilerCompilationTarget.Bytecode);
+        var mlirCached = driver.CompileSource(source, CompilerCompilationTarget.Mlir);
+
+        TestAssertions.False(ReferenceEquals(bytecode, mlir), "Expected different compilation targets to use different cache entries.");
+        TestAssertions.True(ReferenceEquals(bytecode, bytecodeCached), "Expected bytecode target to hit cache.");
+        TestAssertions.True(ReferenceEquals(mlir, mlirCached), "Expected MLIR target to hit cache.");
+        TestAssertions.Equal(2, driver.CacheHits);
         TestAssertions.Equal(2, driver.CacheMisses);
     }
 }

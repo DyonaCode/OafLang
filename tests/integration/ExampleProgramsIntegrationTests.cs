@@ -44,26 +44,26 @@ public static class ExampleProgramsIntegrationTests
 
     private static IReadOnlyList<string> EnumerateExamplePrograms()
     {
-        var root = FindRepositoryRoot();
-        var examplesRoot = Path.Combine(root, "examples");
+        var examplesRoot = FindExamplesRoot();
         return Directory.GetFiles(examplesRoot, "*.oaf", SearchOption.AllDirectories)
             .OrderBy(static path => path, StringComparer.Ordinal)
             .ToArray();
     }
 
-    private static string FindRepositoryRoot()
+    private static string FindExamplesRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "Oaf.csproj")))
+            var candidate = Path.Combine(directory.FullName, "examples");
+            if (Directory.Exists(candidate))
             {
-                return directory.FullName;
+                return candidate;
             }
 
             directory = directory.Parent;
         }
 
-        throw new InvalidOperationException("Unable to locate repository root.");
+        throw new InvalidOperationException("Unable to locate examples directory.");
     }
 }

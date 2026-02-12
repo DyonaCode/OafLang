@@ -17,7 +17,9 @@ public static class ParserTests
             ("keeps_parenthesized_expression_distinct_from_cast", KeepsParenthesizedExpressionDistinctFromCast),
             ("parses_arrow_body_without_double_semicolon", ParsesArrowBodyWithoutDoubleSemicolon),
             ("parses_brace_block_arrow_body", ParsesBraceBlockArrowBody),
-            ("accepts_legacy_double_semicolon_terminator", AcceptsLegacyDoubleSemicolonTerminator)
+            ("accepts_legacy_double_semicolon_terminator", AcceptsLegacyDoubleSemicolonTerminator),
+            ("parses_module_and_import_statements", ParsesModuleAndImportStatements),
+            ("parses_qualified_identifier_expressions", ParsesQualifiedIdentifierExpressions)
         ];
     }
 
@@ -139,5 +141,42 @@ public static class ParserTests
 
         TestAssertions.False(parser.Diagnostics.HasErrors, "Expected legacy ';;' body terminator to remain supported.");
         TestAssertions.Equal(2, unit.Statements.Count);
+    }
+
+    private static void ParsesModuleAndImportStatements()
+    {
+        const string source = "module pkg.math; import pkg.core; flux x = 1;";
+        var parser = new Frontend.Compiler.Parser.Parser(source);
+        var unit = parser.ParseCompilationUnit();
+
+        TestAssertions.False(parser.Diagnostics.HasErrors, "Expected module/import syntax to parse.");
+        TestAssertions.Equal(3, unit.Statements.Count);
+        TestAssertions.True(unit.Statements[0] is ModuleDeclarationStatementSyntax);
+        TestAssertions.True(unit.Statements[1] is ImportStatementSyntax);
+
+        var module = unit.Statements[0] as ModuleDeclarationStatementSyntax;
+        var import = unit.Statements[1] as ImportStatementSyntax;
+        TestAssertions.Equal("pkg.math", module!.ModuleName);
+        TestAssertions.Equal("pkg.core", import!.ModuleName);
+    }
+
+    private static void ParsesQualifiedIdentifierExpressions()
+    {
+        const string source = "flux x = pkg.math.value; pkg.math.value = x;";
+        var parser = new Frontend.Compiler.Parser.Parser(source);
+        var unit = parser.ParseCompilationUnit();
+
+        TestAssertions.False(parser.Diagnostics.HasErrors, "Expected qualified identifiers to parse.");
+        TestAssertions.Equal(2, unit.Statements.Count);
+
+        var declaration = unit.Statements[0] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(declaration is not null, "Expected declaration.");
+        TestAssertions.True(declaration!.Initializer is NameExpressionSyntax, "Expected name expression initializer.");
+        var initializer = (NameExpressionSyntax)declaration.Initializer;
+        TestAssertions.Equal("pkg.math.value", initializer.Identifier);
+
+        var assignment = unit.Statements[1] as AssignmentStatementSyntax;
+        TestAssertions.True(assignment is not null, "Expected assignment.");
+        TestAssertions.Equal("pkg.math.value", assignment!.Identifier);
     }
 }

@@ -102,5 +102,44 @@ if (Test-Path $zipPath) {
     Remove-Item -Force $zipPath
 }
 
-Compress-Archive -Path $StagingDir -DestinationPath $zipPath -CompressionLevel Optimal
+# Normalize timestamps so archive metadata is reproducible across runs.
+$normalizedTimestamp = [DateTime]::SpecifyKind([DateTime]"2000-01-01T00:00:00", [DateTimeKind]::Utc)
+Get-ChildItem -Path $StagingDir -Recurse -Force | ForEach-Object {
+    $_.LastWriteTimeUtc = $normalizedTimestamp
+}
+(Get-Item -LiteralPath $StagingDir).LastWriteTimeUtc = $normalizedTimestamp
+
+# Build zip archive with deterministic entry ordering and metadata.
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+$zipFileStream = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+try {
+    $zipArchive = [System.IO.Compression.ZipArchive]::new($zipFileStream, [System.IO.Compression.ZipArchiveMode]::Create, $false)
+    try {
+        $files = Get-ChildItem -Path $StagingDir -Recurse -File | Sort-Object FullName
+        foreach ($file in $files) {
+            $relativePath = [System.IO.Path]::GetRelativePath($DistDir, $file.FullName).Replace('\', '/')
+            $entry = $zipArchive.CreateEntry($relativePath, [System.IO.Compression.CompressionLevel]::Optimal)
+            $entry.LastWriteTime = [DateTimeOffset]$normalizedTimestamp
+
+            $entryStream = $entry.Open()
+            $inputStream = [System.IO.File]::OpenRead($file.FullName)
+            try {
+                $inputStream.CopyTo($entryStream)
+            }
+            finally {
+                $inputStream.Dispose()
+                $entryStream.Dispose()
+            }
+        }
+    }
+    finally {
+        $zipArchive.Dispose()
+    }
+}
+finally {
+    $zipFileStream.Dispose()
+}
+
 Write-Host "Package created: $zipPath"

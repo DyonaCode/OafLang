@@ -63,9 +63,10 @@ Contents:
 
 Quick start:
 1. Execute './bin/oaf --self-test' to validate installation.
-2. Run a file: './bin/oaf run ./examples/basics/01_hello_and_return.oaf'
-3. Build bytecode artifact: './bin/oaf build ./examples/basics/01_hello_and_return.oaf'
-4. Publish executable: './bin/oaf publish ./examples/applications/01_sum_accumulator.oaf'
+2. Run example tests: './bin/oaf test ./examples'
+3. Run a file: './bin/oaf run ./examples/basics/01_hello_and_return.oaf'
+4. Build bytecode artifact: './bin/oaf build ./examples/basics/01_hello_and_return.oaf'
+5. Publish executable: './bin/oaf publish ./examples/applications/01_sum_accumulator.oaf'
 
 Install globally:
 - macOS/Linux: './install.sh'
@@ -80,14 +81,25 @@ EOF
 mkdir -p "${DIST_DIR}"
 TAR_PATH="${DIST_DIR}/${PACKAGE_NAME}.tar.gz"
 ZIP_PATH="${DIST_DIR}/${PACKAGE_NAME}.zip"
+ARCHIVE_TOUCH_TIME="${OAF_ARCHIVE_TOUCH_TIME:-200001010000.00}"
+ENTRY_LIST_FILE="$(mktemp)"
+trap 'rm -f "${ENTRY_LIST_FILE}"' EXIT
 
 rm -f "${TAR_PATH}" "${ZIP_PATH}"
-tar -czf "${TAR_PATH}" -C "${DIST_DIR}" "${PACKAGE_NAME}"
+
+# Normalize timestamps so archive metadata is reproducible across runs.
+find "${STAGING_DIR}" -exec touch -t "${ARCHIVE_TOUCH_TIME}" {} +
+
+(
+  cd "${DIST_DIR}"
+  LC_ALL=C find "${PACKAGE_NAME}" -print | sort > "${ENTRY_LIST_FILE}"
+  tar -cf - -T "${ENTRY_LIST_FILE}" | gzip -n > "${TAR_PATH}"
+)
 
 if command -v zip >/dev/null 2>&1; then
   (
     cd "${DIST_DIR}"
-    zip -rq "${ZIP_PATH}" "${PACKAGE_NAME}"
+    zip -X -q "${ZIP_PATH}" -@ < "${ENTRY_LIST_FILE}"
   )
 fi
 

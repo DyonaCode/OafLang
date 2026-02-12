@@ -80,6 +80,8 @@ public enum TokenKind
     BreakKeyword,
     ContinueKeyword,
     WhenKeyword,
+    ModuleKeyword,
+    ImportKeyword,
     TrueKeyword,
     FalseKeyword
 }
