@@ -62,9 +62,13 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 @'
 @echo off
 setlocal
+set "OAF_HOME_DEFAULT=__OAF_HOME_DEFAULT__"
 if defined OAF_HOME (
   set "OAF_HOME_PATH=%OAF_HOME%"
 ) else (
+  set "OAF_HOME_PATH=%OAF_HOME_DEFAULT%"
+)
+if "%OAF_HOME_PATH%"=="" (
   set "OAF_HOME_PATH=%USERPROFILE%\.oaf"
 )
 set "CURRENT_FILE=%OAF_HOME_PATH%\current.txt"
@@ -79,7 +83,7 @@ if not exist "%TARGET%" (
   exit /b 1
 )
 "%TARGET%" %*
-'@ | Set-Content -Path $ShimCmd -Encoding ASCII
+'@.Replace("__OAF_HOME_DEFAULT__", $OafHome) | Set-Content -Path $ShimCmd -Encoding ASCII
 
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ([string]::IsNullOrWhiteSpace($userPath)) {

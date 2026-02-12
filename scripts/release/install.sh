@@ -55,25 +55,29 @@ mkdir -p "${OAF_HOME}"
 printf '%s\n' "${VERSION}" > "${CURRENT_FILE}"
 
 mkdir -p "${INSTALL_DIR}"
-cat > "${SHIM_BIN}" <<'EOF'
+cat > "${SHIM_BIN}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 
-OAF_HOME="${OAF_HOME:-$HOME/.oaf}"
-CURRENT_FILE="${OAF_HOME}/current.txt"
-if [[ ! -f "${CURRENT_FILE}" ]]; then
+OAF_HOME_DEFAULT="${OAF_HOME}"
+OAF_HOME="\${OAF_HOME:-\${OAF_HOME_DEFAULT}}"
+if [[ -z "\${OAF_HOME}" ]]; then
+  OAF_HOME="\$HOME/.oaf"
+fi
+CURRENT_FILE="\${OAF_HOME}/current.txt"
+if [[ ! -f "\${CURRENT_FILE}" ]]; then
   echo "No active Oaf version configured. Re-run install.sh." >&2
   exit 1
 fi
 
-VERSION="$(tr -d '\r\n[:space:]' < "${CURRENT_FILE}")"
-TARGET="${OAF_HOME}/versions/${VERSION}/bin/oaf"
-if [[ ! -x "${TARGET}" ]]; then
-  echo "Configured Oaf version '${VERSION}' is missing: ${TARGET}" >&2
+VERSION="\$(tr -d '\r\n[:space:]' < "\${CURRENT_FILE}")"
+TARGET="\${OAF_HOME}/versions/\${VERSION}/bin/oaf"
+if [[ ! -x "\${TARGET}" ]]; then
+  echo "Configured Oaf version '\${VERSION}' is missing: \${TARGET}" >&2
   exit 1
 fi
 
-exec "${TARGET}" "$@"
+exec "\${TARGET}" "\$@"
 EOF
 chmod +x "${SHIM_BIN}"
 
