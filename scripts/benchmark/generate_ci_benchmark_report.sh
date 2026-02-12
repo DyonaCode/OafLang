@@ -22,20 +22,41 @@ KERNEL_OUTPUT="${TMP_DIR}/kernel_output.csv"
 CROSS_LANG_STDOUT="${TMP_DIR}/cross_lang_output.txt"
 CROSS_LANG_CSV="${TMP_DIR}/cross_lang.csv"
 
-dotnet run --configuration Release --no-build -- --benchmark "${BENCH_ITERATIONS}" > "${BENCHMARK_OUTPUT}" 2>&1
-dotnet run --configuration Release --no-build -- --benchmark-kernels \
+run_or_dump() {
+  local label="$1"
+  local output_file="$2"
+  shift 2
+  if ! "$@" > "${output_file}" 2>&1; then
+    echo "[benchmark-report] ${label} failed. Captured output:" >&2
+    cat "${output_file}" >&2 || true
+    exit 1
+  fi
+}
+
+run_or_dump "throughput benchmark" "${BENCHMARK_OUTPUT}" \
+  dotnet run --configuration Release --no-build -- --benchmark "${BENCH_ITERATIONS}"
+
+run_or_dump "kernel benchmark" "${KERNEL_OUTPUT}" \
+  dotnet run --configuration Release --no-build -- --benchmark-kernels \
   --iterations "${KERNEL_ITERATIONS}" \
   --sum-n "${SUM_N}" \
   --prime-n "${PRIME_N}" \
-  --matrix-n "${MATRIX_N}" > "${KERNEL_OUTPUT}" 2>&1
+  --matrix-n "${MATRIX_N}"
 
-./scripts/benchmark/run_c_rust_benchmarks.sh \
+run_or_dump "cross-language benchmark" "${CROSS_LANG_STDOUT}" \
+  bash ./scripts/benchmark/run_c_rust_benchmarks.sh \
   --iterations "${CROSS_LANG_ITERATIONS}" \
   --sum-n "${SUM_N}" \
   --prime-n "${PRIME_N}" \
   --matrix-n "${MATRIX_N}" \
   --oaf-mode both \
-  --out "${CROSS_LANG_CSV}" > "${CROSS_LANG_STDOUT}" 2>&1
+  --out "${CROSS_LANG_CSV}"
+
+if [[ ! -s "${CROSS_LANG_CSV}" ]]; then
+  echo "[benchmark-report] cross-language benchmark did not produce CSV output at ${CROSS_LANG_CSV}." >&2
+  cat "${CROSS_LANG_STDOUT}" >&2 || true
+  exit 1
+fi
 
 sanitize_output() {
   sed '/^CSSM_ModuleLoad()/d' "$1"
