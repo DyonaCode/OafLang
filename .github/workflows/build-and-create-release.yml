@@ -227,6 +227,7 @@ jobs:
               throw "Installer failed: $($_.Exception.Message)"
             }
 
+            $env:OAF_HOME = $oafHome
             & $shim --version
             if ($LASTEXITCODE -ne 0) {
               throw "Shim --version failed."
