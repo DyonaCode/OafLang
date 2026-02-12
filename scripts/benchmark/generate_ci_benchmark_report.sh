@@ -7,6 +7,7 @@ KERNEL_ITERATIONS="${KERNEL_ITERATIONS:-5}"
 SUM_N="${SUM_N:-5000000}"
 PRIME_N="${PRIME_N:-30000}"
 MATRIX_N="${MATRIX_N:-48}"
+CROSS_LANG_ITERATIONS="${CROSS_LANG_ITERATIONS:-5}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_FILE="${ROOT_DIR}/${OUTPUT_PATH}"
@@ -18,6 +19,8 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 
 BENCHMARK_OUTPUT="${TMP_DIR}/benchmark_output.txt"
 KERNEL_OUTPUT="${TMP_DIR}/kernel_output.csv"
+CROSS_LANG_STDOUT="${TMP_DIR}/cross_lang_output.txt"
+CROSS_LANG_CSV="${TMP_DIR}/cross_lang.csv"
 
 dotnet run --configuration Release --no-build -- --benchmark "${BENCH_ITERATIONS}" > "${BENCHMARK_OUTPUT}" 2>&1
 dotnet run --configuration Release --no-build -- --benchmark-kernels \
@@ -25,6 +28,14 @@ dotnet run --configuration Release --no-build -- --benchmark-kernels \
   --sum-n "${SUM_N}" \
   --prime-n "${PRIME_N}" \
   --matrix-n "${MATRIX_N}" > "${KERNEL_OUTPUT}" 2>&1
+
+./scripts/benchmark/run_c_rust_benchmarks.sh \
+  --iterations "${CROSS_LANG_ITERATIONS}" \
+  --sum-n "${SUM_N}" \
+  --prime-n "${PRIME_N}" \
+  --matrix-n "${MATRIX_N}" \
+  --oaf-mode both \
+  --out "${CROSS_LANG_CSV}" > "${CROSS_LANG_STDOUT}" 2>&1
 
 sanitize_output() {
   sed '/^CSSM_ModuleLoad()/d' "$1"
@@ -63,6 +74,43 @@ dotnet run --configuration Release --no-build -- --benchmark-kernels --iteration
 \`\`\`csv
 $(sanitize_output "${KERNEL_OUTPUT}")
 \`\`\`
+
+## Cross-Language Benchmarks (C, Rust, Oaf VM, Oaf Native)
+
+Command:
+\`\`\`bash
+./scripts/benchmark/run_c_rust_benchmarks.sh --iterations ${CROSS_LANG_ITERATIONS} --sum-n ${SUM_N} --prime-n ${PRIME_N} --matrix-n ${MATRIX_N} --oaf-mode both
+\`\`\`
+
+Raw CSV:
+\`\`\`csv
+$(sanitize_output "${CROSS_LANG_CSV}")
+\`\`\`
+
+Relative to C baseline (mean_ms ratio):
+
+| Algorithm | Rust/C | Oaf VM/C | Oaf Native/C |
+|---|---:|---:|---:|
+$(awk -F, '
+NR == 1 { next }
+{
+  key = $2
+  mean[$1, key] = $5 + 0.0
+  alg[key] = 1
+}
+END {
+  for (key in alg) {
+    c = mean["c", key]
+    if (c <= 0) {
+      continue
+    }
+
+    rust = (("rust", key) in mean) ? sprintf("%.3fx", mean["rust", key] / c) : "n/a"
+    vm = (("oaf_vm", key) in mean) ? sprintf("%.3fx", mean["oaf_vm", key] / c) : "n/a"
+    exe = (("oaf_exe", key) in mean) ? sprintf("%.3fx", mean["oaf_exe", key] / c) : "n/a"
+    printf "| %s | %s | %s | %s |\n", key, rust, vm, exe
+  }
+}' "${CROSS_LANG_CSV}" | sort)
 
 ## Notes
 

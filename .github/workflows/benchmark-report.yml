@@ -33,6 +33,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Restore
         run: dotnet restore
 
@@ -46,6 +49,7 @@ jobs:
           SUM_N: "5000000"
           PRIME_N: "30000"
           MATRIX_N: "48"
+          CROSS_LANG_ITERATIONS: "5"
         run: |
           bash scripts/benchmark/generate_ci_benchmark_report.sh benchmarks/CI_BENCHMARKS.md
 
