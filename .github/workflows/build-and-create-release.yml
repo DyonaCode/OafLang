@@ -67,6 +67,25 @@ jobs:
         run: |
           bash scripts/release/create_package.sh "${{ needs.resolve_version.outputs.version }}" "${{ matrix.runtime_id }}"
 
+      - name: Validate packaged examples (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          version="${{ needs.resolve_version.outputs.version }}"
+          archive="dist/oaf-${version}.tar.gz"
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "${temp_dir}"' EXIT
+
+          tar -xzf "${archive}" -C "${temp_dir}"
+          package_root="${temp_dir}/oaf-${version}"
+          cli="${package_root}/bin/oaf"
+
+          while IFS= read -r -d '' example; do
+            relative="${example#${package_root}/}"
+            echo "Running packaged example: ${relative}"
+            "${cli}" run "${example}"
+          done < <(find "${package_root}/examples" -type f -name '*.oaf' -print0 | sort -z)
+
       - name: Rename package archives (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -85,6 +104,36 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/release/create_package.ps1 -Version "${{ needs.resolve_version.outputs.version }}" -RuntimeId "${{ matrix.runtime_id }}"
+
+      - name: Validate packaged examples (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ needs.resolve_version.outputs.version }}"
+          $archive = "dist/oaf-$version.zip"
+          $tempDir = Join-Path $env:RUNNER_TEMP ("oaf_pkg_validate_" + [Guid]::NewGuid().ToString("N"))
+          New-Item -ItemType Directory -Path $tempDir | Out-Null
+          try {
+            Expand-Archive -Path $archive -DestinationPath $tempDir -Force
+            $packageRoot = Join-Path $tempDir "oaf-$version"
+            $cli = Join-Path $packageRoot "bin/oaf.exe"
+
+            Get-ChildItem -Path (Join-Path $packageRoot "examples") -Recurse -Filter *.oaf |
+              Sort-Object FullName |
+              ForEach-Object {
+                $relative = $_.FullName.Substring($packageRoot.Length + 1)
+                Write-Host "Running packaged example: $relative"
+                & $cli run $_.FullName
+                if ($LASTEXITCODE -ne 0) {
+                  throw "Packaged example failed: $($_.FullName)"
+                }
+              }
+          }
+          finally {
+            if (Test-Path $tempDir) {
+              Remove-Item -Path $tempDir -Recurse -Force
+            }
+          }
 
       - name: Rename package archives (Windows)
         if: runner.os == 'Windows'

@@ -5,4 +5,4 @@ enum Decision => Promote, Hold;
 float scoreFloat = 87.9;
 int score = (int)scoreFloat;
 
-if score >= 85 => return "Promote"; -> return "Hold";;;
+if score >= 85 => return "Promote"; -> return "Hold";

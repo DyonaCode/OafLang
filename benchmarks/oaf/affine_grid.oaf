@@ -2,23 +2,23 @@ flux n = 48;
 flux row = 0;
 flux checksum = 0;
 
-loop row < n =>
+loop row < n => {
     flux col = 0;
-    loop col < n =>
+    loop col < n => {
         flux acc = 0;
         flux k = 0;
-        loop k < n =>
+        loop k < n => {
             flux a = (row * 131 + k * 17 + 13) % 256;
             flux b = (k * 19 + col * 97 + 53) % 256;
             acc += a * b;
             k += 1;
-        ;;
+        }
 
         checksum = checksum ^ (acc + ((row * n + col) * 2654435761));
         col += 1;
-    ;;
+    }
 
     row += 1;
-;;
+}
 
 return checksum;

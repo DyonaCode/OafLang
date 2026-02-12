@@ -2,4 +2,4 @@ struct Point [int x, int y];
 class User [string name, int age];
 enum Option<T> => Some(T), None;
 flux result = 1;
-if result == 1 => return result; -> return 0;;;
+if result == 1 => return result; -> return 0;

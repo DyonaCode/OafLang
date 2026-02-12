@@ -1,7 +1,7 @@
 flux total = 0;
 flux i = 1;
-loop i <= 100 =>
+loop i <= 100 => {
     total += i;
     i += 1;
-;;
+}
 return total;

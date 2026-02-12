@@ -1,11 +1,11 @@
 flux sum = 0;
 flux i = 5;
-loop i > 0 =>
-    if i == 3 =>
+loop i > 0 => {
+    if i == 3 => {
         i -= 1;
         continue;
-    ;;
+    }
     sum += i;
     i -= 1;
-;;
+}
 return sum;

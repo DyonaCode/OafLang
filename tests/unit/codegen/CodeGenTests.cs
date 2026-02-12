@@ -34,7 +34,7 @@ public static class CodeGenTests
 
     private static void LowersIfStatementToBranchBlocks()
     {
-        const string source = "flag = 1 < 2; if flag => return 1; -> return 2;;;";
+        const string source = "flag = 1 < 2; if flag => return 1; -> return 2;";
         var result = Compile(source);
 
         TestAssertions.False(result.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error));

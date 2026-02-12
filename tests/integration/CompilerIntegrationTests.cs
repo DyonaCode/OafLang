@@ -26,10 +26,10 @@ public static class CompilerIntegrationTests
             struct Pair<T> [T left, T right];
             flux sum = 0;
             flux i = 10;
-            loop i > 0 =>
+            loop i > 0 => {
                 sum += i;
                 i -= 1;
-            ;;
+            }
             return sum;
             """;
 

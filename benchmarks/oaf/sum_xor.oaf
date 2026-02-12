@@ -2,9 +2,9 @@ flux n = 5000000;
 flux i = 1;
 flux acc = 0;
 
-loop i <= n =>
+loop i <= n => {
     acc += (i ^ (i >> 3)) + (i % 8);
     i += 1;
-;;
+}
 
 return acc;

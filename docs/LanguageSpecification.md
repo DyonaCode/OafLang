@@ -14,7 +14,7 @@ This specification describes the language features currently implemented in the 
   - assignment: `=`, `+=`, `-=`, `*=`, `/=`
   - comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
   - bitwise/logical families implemented in lexer/parser precedence tables
-  - control: `=>` (body start), `->` (else branch), `;;` (block terminator)
+  - control: `=>` (body start), `->` (else branch)
 
 ### 1.2 Comments
 
@@ -118,27 +118,37 @@ Type checker supports explicit narrowing casts and rejects invalid casts.
 ### 6.1 If / If-Else
 
 ```oaf
-if condition => statement;;
-if condition => statement; -> alternative;;
+if condition => statement;
+if condition => statement; -> alternative;
+if condition => {
+    statement1;
+    statement2;
+} -> {
+    alternative1;
+    alternative2;
+}
 ```
 
 ### 6.2 Loop
 
 ```oaf
-loop condition =>
+loop condition => statement;
+loop condition => {
     // statements
-;;
+}
 ```
 
 ### 6.3 Parallel Loop Syntax
 
 ```oaf
-paralloop condition =>
+paralloop condition => statement;
+paralloop condition => {
     // statements
-;;
+}
 ```
 
 `paralloop` is parsed and represented in AST; runtime-level parallel utilities are available in stdlib concurrency modules.
+Legacy `;;` block terminators are still accepted for backward compatibility.
 
 ### 6.4 Break / Continue
 

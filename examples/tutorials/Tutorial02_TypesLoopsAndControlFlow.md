@@ -12,14 +12,14 @@ int rounded = (int)price;
 
 flux sum = 0;
 flux i = rounded;
-loop i > 0 =>
-    if i == 3 =>
+loop i > 0 => {
+    if i == 3 => {
         i -= 1;
         continue;
-    ;;
+    }
     sum += i;
     i -= 1;
-;;
+}
 
 return sum;
 ```
@@ -27,11 +27,11 @@ return sum;
 ## Run
 
 ```bash
-dotnet run -- "float price = 19.99; int rounded = (int)price; flux sum = 0; flux i = rounded; loop i > 0 => if i == 3 => i -= 1; continue;; sum += i; i -= 1;; return sum;" --run-bytecode
+oaf run "float price = 19.99; int rounded = (int)price; flux sum = 0; flux i = rounded; loop i > 0 => { if i == 3 => { i -= 1; continue; } sum += i; i -= 1; } return sum;"
 ```
 
 ## Notes
 
 - `flux` enables mutation.
 - Explicit numeric cast `(int)price` is required for narrowing conversion.
-- Loop body closes with `;;`.
+- Use `{ ... }` for multi-statement loop and branch bodies.

@@ -1,9 +1,9 @@
 flux i = 8;
 flux total = 0;
 
-paralloop i > 0 =>
+paralloop i > 0 => {
     total += i;
     i -= 1;
-;;
+}
 
 return total;

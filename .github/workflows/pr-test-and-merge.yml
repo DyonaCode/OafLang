@@ -187,12 +187,54 @@ jobs:
           run_smoke oaf_stdlib_smoke oaflang_stdlib_smoke
           run_smoke oaf_advanced_concurrency_smoke oaflang_advanced_concurrency_smoke
 
+  packaged_examples:
+    if: needs.discover_prs.outputs.eligible_count != '0'
+    needs: discover_prs
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover_prs.outputs.pr_matrix) }}
+    steps:
+      - name: Checkout PR merge ref
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ matrix.pr_number }}/merge
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build Linux release package
+        run: |
+          version="0.0.0-pr${{ matrix.pr_number }}"
+          bash scripts/release/create_package.sh "${version}" linux-x64
+
+      - name: Validate packaged examples
+        run: |
+          set -euo pipefail
+          version="0.0.0-pr${{ matrix.pr_number }}"
+          archive="dist/oaf-${version}.tar.gz"
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "${temp_dir}"' EXIT
+
+          tar -xzf "${archive}" -C "${temp_dir}"
+          package_root="${temp_dir}/oaf-${version}"
+          cli="${package_root}/bin/oaf"
+
+          while IFS= read -r -d '' example; do
+            relative="${example#${package_root}/}"
+            echo "Running packaged example: ${relative}"
+            "${cli}" run "${example}"
+          done < <(find "${package_root}/examples" -type f -name '*.oaf' -print0 | sort -z)
+
   merge_pr:
     if: needs.discover_prs.outputs.eligible_count != '0'
     needs:
       - discover_prs
       - dotnet_tests
       - c_runtime_smoke
+      - packaged_examples
     runs-on: ubuntu-latest
     permissions:
       contents: write

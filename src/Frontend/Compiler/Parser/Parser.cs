@@ -246,16 +246,16 @@ public sealed class Parser
         var condition = ParseExpression();
         Match(TokenKind.FatArrowToken, "Expected '=>' after if condition.");
 
-        var thenStatement = ParseDelimitedBody(stopOnElseArrow: true);
+        var thenStatement = ParseArrowBody(stopOnElseArrow: true);
 
         StatementSyntax? elseStatement = null;
         if (Current.Kind == TokenKind.ArrowToken)
         {
             NextToken();
-            elseStatement = ParseDelimitedBody(stopOnElseArrow: false);
+            elseStatement = ParseArrowBody(stopOnElseArrow: false);
         }
 
-        MatchBlockTerminator("Expected ';;' to close if statement.");
+        ConsumeOptionalLegacyBlockTerminator();
         return new IfStatementSyntax(condition, thenStatement, elseStatement, SpanFrom(ifToken));
     }
 
@@ -281,52 +281,52 @@ public sealed class Parser
             DeclareVariable(iterationVariable);
         }
 
-        var body = ParseDelimitedBody(stopOnElseArrow: false);
+        var body = ParseArrowBody(stopOnElseArrow: false);
         ExitVariableScope();
-        MatchBlockTerminator("Expected ';;' to close loop statement.");
+        ConsumeOptionalLegacyBlockTerminator();
 
         return new LoopStatementSyntax(isParallel, iteratorOrCondition, iterationVariable, body, SpanFrom(keyword));
     }
 
-    private StatementSyntax ParseDelimitedBody(bool stopOnElseArrow)
+    private StatementSyntax ParseArrowBody(bool stopOnElseArrow)
     {
-        var statements = new List<StatementSyntax>();
-
-        while (Current.Kind != TokenKind.EndOfFileToken && !IsBlockTerminator())
+        if (Current.Kind == TokenKind.OpenBraceToken)
         {
-            if (stopOnElseArrow && Current.Kind == TokenKind.ArrowToken)
-            {
-                break;
-            }
+            return ParseBraceBlockStatement();
+        }
 
-            var start = _position;
-            statements.Add(ParseStatement());
+        if (stopOnElseArrow && Current.Kind == TokenKind.ArrowToken)
+        {
+            Diagnostics.ReportParserError("Expected statement before '->' in if body.", Current);
+            return new BlockStatementSyntax([], SourceSpan.Unknown);
+        }
 
+        var start = _position;
+        var statement = ParseStatement();
+        if (_position == start)
+        {
+            Diagnostics.ReportParserError("Unable to parse statement inside block-like body.", Current);
+            Synchronize();
             if (_position == start)
             {
-                Diagnostics.ReportParserError("Unable to parse statement inside block-like body.", Current);
-                Synchronize();
-
-                if (_position == start)
-                {
-                    NextToken();
-                }
+                NextToken();
             }
+
+            return new BlockStatementSyntax([], SourceSpan.Unknown);
         }
 
-        if (statements.Count == 1)
-        {
-            return statements[0];
-        }
-
-        var span = statements.Count > 0 ? statements[0].Span : SourceSpan.Unknown;
-        return new BlockStatementSyntax(statements, span);
+        return statement;
     }
 
-    private void MatchBlockTerminator(string message)
+    private void ConsumeOptionalLegacyBlockTerminator()
     {
-        Match(TokenKind.SemicolonToken, message);
-        Match(TokenKind.SemicolonToken, message);
+        if (Current.Kind != TokenKind.SemicolonToken || Peek(1).Kind != TokenKind.SemicolonToken)
+        {
+            return;
+        }
+
+        NextToken();
+        NextToken();
     }
 
     private StatementSyntax ParseInferredVariableDeclarationStatement(bool isMutable, SourceSpan? fallbackSpan)
@@ -673,11 +673,6 @@ public sealed class Parser
         }
 
         return false;
-    }
-
-    private bool IsBlockTerminator()
-    {
-        return Current.Kind == TokenKind.SemicolonToken && Peek(1).Kind == TokenKind.SemicolonToken;
     }
 
     private bool IsAssignmentOperator(TokenKind kind)

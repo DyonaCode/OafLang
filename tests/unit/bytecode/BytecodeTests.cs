@@ -25,7 +25,7 @@ public static class BytecodeTests
 
     private static void GeneratesBranchingBytecodeForIf()
     {
-        const string source = "flag = 1 < 2; if flag => return 1; -> return 2;;;";
+        const string source = "flag = 1 < 2; if flag => return 1; -> return 2;";
         var result = Compile(source);
 
         TestAssertions.False(result.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error));
@@ -61,7 +61,7 @@ public static class BytecodeTests
 
     private static void FusesIntegerConditionJumps()
     {
-        const string source = "flux i = 10; loop i > 0 => i -= 1;;; return i;";
+        const string source = "flux i = 10; loop i > 0 => i -= 1; return i;";
         var result = Compile(source);
         TestAssertions.False(result.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error));
 
@@ -86,7 +86,7 @@ public static class BytecodeTests
 
     private static void ExecutesLoopCountdown()
     {
-        const string source = "flux x = 3; loop x > 0 => x -= 1;;; return x;";
+        const string source = "flux x = 3; loop x > 0 => x -= 1; return x;";
         var result = Compile(source);
 
         var vm = new BytecodeVirtualMachine();

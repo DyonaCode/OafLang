@@ -180,10 +180,10 @@ public static class OafKernelBenchmarkRunner
 flux n = {{sumN}};
 flux i = 1;
 flux acc = 0;
-loop i <= n =>
+loop i <= n => {
     acc += (i ^ (i >> 3)) + (i % 8);
     i += 1;
-;;
+}
 return acc;
 """;
     }
@@ -195,22 +195,22 @@ flux n = {{primeN}};
 flux candidate = 2;
 flux primeCount = 0;
 flux checksum = 0;
-loop candidate <= n =>
+loop candidate <= n => {
     flux divisor = 2;
     flux isPrime = true;
-    loop divisor * divisor <= candidate =>
-        if candidate % divisor == 0 =>
+    loop divisor * divisor <= candidate => {
+        if candidate % divisor == 0 => {
             isPrime = false;
             break;
-        ;;
+        }
         divisor += 1;
-    ;;
-    if isPrime =>
+    }
+    if isPrime => {
         primeCount += 1;
         checksum += candidate * ((primeCount % 16) + 1);
-    ;;
+    }
     candidate += 1;
-;;
+}
 return (primeCount << 32) ^ checksum;
 """;
     }
@@ -221,22 +221,22 @@ return (primeCount << 32) ^ checksum;
 flux n = {{matrixN}};
 flux row = 0;
 flux checksum = 0;
-loop row < n =>
+loop row < n => {
     flux col = 0;
-    loop col < n =>
+    loop col < n => {
         flux acc = 0;
         flux k = 0;
-        loop k < n =>
+        loop k < n => {
             flux a = (row * 131 + k * 17 + 13) % 256;
             flux b = (k * 19 + col * 97 + 53) % 256;
             acc += a * b;
             k += 1;
-        ;;
+        }
         checksum = checksum ^ (acc + ((row * n + col) * 2654435761));
         col += 1;
-    ;;
+    }
     row += 1;
-;;
+}
 return checksum;
 """;
     }

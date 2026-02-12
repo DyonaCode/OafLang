@@ -32,7 +32,7 @@ public static class TypeCheckerTests
 
     private static void ResolvesBasicScopes()
     {
-        const string source = "flux x = 1; if true => x += 1;;;";
+        const string source = "flux x = 1; if true => x += 1;";
         var diagnostics = CompileAndTypeCheck(source);
         TestAssertions.False(diagnostics.HasErrors, "Expected no type errors for valid scope usage.");
     }
@@ -53,7 +53,7 @@ public static class TypeCheckerTests
 
     private static void InfersLocalTypeFromExpression()
     {
-        const string source = "flag = 1 < 2; if flag => return;;;";
+        const string source = "flag = 1 < 2; if flag => return;";
         var diagnostics = CompileAndTypeCheck(source);
         TestAssertions.False(diagnostics.HasErrors, "Expected inferred bool local to be valid in if condition.");
     }
@@ -99,7 +99,7 @@ public static class TypeCheckerTests
 
     private static void AllowsBreakAndContinueInsideLoop()
     {
-        const string source = "loop true => break; continue;;;";
+        const string source = "loop true => { break; continue; }";
         var diagnostics = CompileAndTypeCheck(source);
         TestAssertions.False(diagnostics.HasErrors, "Expected break/continue inside loop to be valid.");
     }

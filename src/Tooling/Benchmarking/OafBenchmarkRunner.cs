@@ -27,7 +27,7 @@ public static class OafBenchmarkRunner
         enum Option<T> => Some(T), None;
         class Person [string name, int age];
         flux value = 0x10 + 0b1010;
-        loop value > 0 => value -= 1;;;
+        loop value > 0 => value -= 1;
         """;
 
     private const string CompilerBenchmarkSource = """
@@ -36,21 +36,21 @@ public static class OafBenchmarkRunner
         flux y = 2;
         float scale = 3.5;
         flux i = 100;
-        loop i > 0 =>
+        loop i > 0 => {
             x += 1;
             y += (int)scale;
             i -= 1;
-        ;;
+        }
         return x + y;
         """;
 
     private const string BytecodeBenchmarkSource = """
         flux total = 0;
         flux i = 1000;
-        loop i > 0 =>
+        loop i > 0 => {
             total += i;
             i -= 1;
-        ;;
+        }
         return total;
         """;
 

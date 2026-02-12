@@ -14,7 +14,10 @@ public static class ParserTests
             ("parses_type_declarations", ParsesTypeDeclarations),
             ("parses_typed_variable_declaration", ParsesTypedVariableDeclaration),
             ("parses_explicit_cast_expression", ParsesExplicitCastExpression),
-            ("keeps_parenthesized_expression_distinct_from_cast", KeepsParenthesizedExpressionDistinctFromCast)
+            ("keeps_parenthesized_expression_distinct_from_cast", KeepsParenthesizedExpressionDistinctFromCast),
+            ("parses_arrow_body_without_double_semicolon", ParsesArrowBodyWithoutDoubleSemicolon),
+            ("parses_brace_block_arrow_body", ParsesBraceBlockArrowBody),
+            ("accepts_legacy_double_semicolon_terminator", AcceptsLegacyDoubleSemicolonTerminator)
         ];
     }
 
@@ -100,5 +103,41 @@ public static class ParserTests
         var declaration = unit.Statements[0] as VariableDeclarationStatementSyntax;
         TestAssertions.True(declaration is not null, "Expected variable declaration.");
         TestAssertions.True(declaration!.Initializer is ParenthesizedExpressionSyntax, "Expected parenthesized expression, not cast.");
+    }
+
+    private static void ParsesArrowBodyWithoutDoubleSemicolon()
+    {
+        const string source = "flux x = 0; if true => x += 1; return x;";
+        var parser = new Frontend.Compiler.Parser.Parser(source);
+        var unit = parser.ParseCompilationUnit();
+
+        TestAssertions.False(parser.Diagnostics.HasErrors, "Expected arrow body to parse without trailing ';;'.");
+        TestAssertions.Equal(3, unit.Statements.Count);
+
+        var ifStatement = unit.Statements[1] as IfStatementSyntax;
+        TestAssertions.True(ifStatement is not null, "Expected if statement as second top-level statement.");
+        TestAssertions.True(ifStatement!.ThenStatement is AssignmentStatementSyntax, "Expected single assignment then-body.");
+    }
+
+    private static void ParsesBraceBlockArrowBody()
+    {
+        const string source = "flux i = 0; loop i < 3 => { i += 1; } return i;";
+        var parser = new Frontend.Compiler.Parser.Parser(source);
+        var unit = parser.ParseCompilationUnit();
+
+        TestAssertions.False(parser.Diagnostics.HasErrors, "Expected brace block loop body to parse.");
+        var loop = unit.Statements[1] as LoopStatementSyntax;
+        TestAssertions.True(loop is not null, "Expected loop statement.");
+        TestAssertions.True(loop!.Body is BlockStatementSyntax, "Expected loop body to parse as block statement.");
+    }
+
+    private static void AcceptsLegacyDoubleSemicolonTerminator()
+    {
+        const string source = "if true => return 1;;; return 2;";
+        var parser = new Frontend.Compiler.Parser.Parser(source);
+        var unit = parser.ParseCompilationUnit();
+
+        TestAssertions.False(parser.Diagnostics.HasErrors, "Expected legacy ';;' body terminator to remain supported.");
+        TestAssertions.Equal(2, unit.Statements.Count);
     }
 }

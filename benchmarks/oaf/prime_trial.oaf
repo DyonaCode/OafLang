@@ -3,24 +3,24 @@ flux candidate = 2;
 flux primeCount = 0;
 flux checksum = 0;
 
-loop candidate <= n =>
+loop candidate <= n => {
     flux divisor = 2;
     flux isPrime = true;
 
-    loop divisor * divisor <= candidate =>
-        if candidate % divisor == 0 =>
+    loop divisor * divisor <= candidate => {
+        if candidate % divisor == 0 => {
             isPrime = false;
             break;
-        ;;
+        }
         divisor += 1;
-    ;;
+    }
 
-    if isPrime =>
+    if isPrime => {
         primeCount += 1;
         checksum += candidate * ((primeCount % 16) + 1);
-    ;;
+    }
 
     candidate += 1;
-;;
+}
 
 return (primeCount << 32) ^ checksum;
