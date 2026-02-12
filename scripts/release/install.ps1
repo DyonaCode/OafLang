@@ -106,3 +106,6 @@ Write-Host "Shim installed at: $ShimCmd"
 Write-Host "Open a new terminal and run:"
 Write-Host "  oaf --version"
 Write-Host "  oaf version"
+
+# Ensure callers do not observe a stale non-zero native exit code from prior commands.
+$global:LASTEXITCODE = 0
