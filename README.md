@@ -1,7 +1,8 @@
 # Oaf
 
-Oaf is a practical language and SDK focused on clear syntax, predictable behavior, and fast local iteration.  
-The repository includes the language frontend, runtime, CLI tooling, tests, examples, and release packaging scripts.
+Oaf is a dumb language for smart people with bad taste.  
+
+This reop includes the language frontend, runtime, CLI tooling, tests, examples, and release packaging scripts.
 
 ## Overview
 
@@ -49,21 +50,22 @@ flux i = 1;
 loop i <= 10 =>
     total += i;
     i += 1;
-;;
+;
 return total;
 ```
 
-Run it:
+Run:
 
 ```bash
 oaf
 ```
 
-Other common commands:
+Other commands:
 
 ```bash
 oaf run ./examples/basics/01_hello_and_return.oaf
 oaf build ./examples/basics/01_hello_and_return.oaf
+// Experimental:
 oaf publish ./examples/applications/01_sum_accumulator.oaf
 ```
 
@@ -71,15 +73,6 @@ Notes:
 - `oaf` with no args runs `./main.oaf` when present.
 - `oaf build` produces build artifacts (default: bytecode output).
 - `oaf publish` targets native executable output.
-
-## Philosophy
-
-Oaf is built around a few principles:
-
-- Simple defaults: common workflows should work with short commands.
-- Local-first workflow: fast compile/run/test loops without required cloud services.
-- Explicit behavior: predictable outputs and readable diagnostics over hidden magic.
-- Progressive power: start with VM workflows, publish native executables when needed.
 
 ## Documentation
 
