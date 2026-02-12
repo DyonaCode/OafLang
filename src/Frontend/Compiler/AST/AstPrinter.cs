@@ -65,6 +65,14 @@ public static class AstPrinter
                 }
 
                 break;
+            case ModuleDeclarationStatementSyntax moduleDeclaration:
+                builder.Append(" ");
+                builder.Append(moduleDeclaration.ModuleName);
+                break;
+            case ImportStatementSyntax importStatement:
+                builder.Append(" ");
+                builder.Append(importStatement.ModuleName);
+                break;
             case TypeReferenceSyntax typeReference:
                 builder.Append(" ");
                 builder.Append(TypeToText(typeReference));
@@ -115,6 +123,8 @@ public static class AstPrinter
             IfStatementSyntax ifStatement when ifStatement.ElseStatement is not null => [ifStatement.Condition, ifStatement.ThenStatement, ifStatement.ElseStatement],
             IfStatementSyntax ifStatement => [ifStatement.Condition, ifStatement.ThenStatement],
             LoopStatementSyntax loop => [loop.IteratorOrCondition, loop.Body],
+            ModuleDeclarationStatementSyntax => [],
+            ImportStatementSyntax => [],
             StructDeclarationStatementSyntax structDeclaration => structDeclaration.Fields,
             ClassDeclarationStatementSyntax classDeclaration => classDeclaration.Fields,
             EnumDeclarationStatementSyntax enumDeclaration => enumDeclaration.Variants,

@@ -91,6 +91,62 @@ static uint64_t run_affine_grid(uint32_t n) {
     return checksum;
 }
 
+static uint64_t run_branch_mix(uint64_t n) {
+    uint64_t acc = 0;
+    for (uint64_t i = 1; i <= n; ++i) {
+        if ((i % 2ull) == 0ull) {
+            acc += i << 1;
+        } else {
+            acc ^= i * 3ull;
+        }
+
+        if ((i % 7ull) == 0ull) {
+            acc += i >> 2;
+        } else {
+            acc ^= i % 16ull;
+        }
+
+        if ((i % 97ull) == 0ull) {
+            acc += i * ((i % 13ull) + 1ull);
+        }
+    }
+
+    return acc;
+}
+
+static uint64_t run_gcd_fold(uint32_t n) {
+    uint64_t checksum = 0;
+    for (uint32_t i = 1; i <= n; ++i) {
+        uint64_t a = ((uint64_t)i * 37ull) + 17ull;
+        uint64_t b = ((uint64_t)i * 53ull) + 19ull;
+        while (b != 0ull) {
+            const uint64_t t = a % b;
+            a = b;
+            b = t;
+        }
+
+        checksum += a * ((uint64_t)(i % 16u) + 1ull);
+    }
+
+    return checksum;
+}
+
+static uint64_t run_lcg_stream(uint64_t n) {
+    uint64_t state = 123456789ull;
+    uint64_t checksum = 0;
+
+    for (uint64_t i = 0; i < n; ++i) {
+        state = ((state * 1103515245ull) + 12345ull) % 2147483647ull;
+        if ((state % 2ull) == 0ull) {
+            checksum += state;
+        } else {
+            checksum ^= state;
+        }
+    }
+
+    return checksum ^ state;
+}
+
 static uint64_t mix_checksum(uint64_t current, uint64_t value, uint64_t iteration) {
     current ^= value + 0x9e3779b97f4a7c15ull + (iteration << 6) + (iteration >> 2);
     return (current << 13) | (current >> (64 - 13));
@@ -180,6 +236,27 @@ int main(int argc, char** argv) {
         grid_checksum = mix_checksum(grid_checksum, run_affine_grid(options.matrix_n), (uint64_t)i);
     }
     print_result("affine_grid", options.iterations, now_ms() - started, grid_checksum);
+
+    started = now_ms();
+    uint64_t branch_checksum = 0;
+    for (int i = 0; i < options.iterations; ++i) {
+        branch_checksum = mix_checksum(branch_checksum, run_branch_mix(options.sum_n), (uint64_t)i);
+    }
+    print_result("branch_mix", options.iterations, now_ms() - started, branch_checksum);
+
+    started = now_ms();
+    uint64_t gcd_checksum = 0;
+    for (int i = 0; i < options.iterations; ++i) {
+        gcd_checksum = mix_checksum(gcd_checksum, run_gcd_fold(options.prime_n), (uint64_t)i);
+    }
+    print_result("gcd_fold", options.iterations, now_ms() - started, gcd_checksum);
+
+    started = now_ms();
+    uint64_t lcg_checksum = 0;
+    for (int i = 0; i < options.iterations; ++i) {
+        lcg_checksum = mix_checksum(lcg_checksum, run_lcg_stream(options.sum_n), (uint64_t)i);
+    }
+    print_result("lcg_stream", options.iterations, now_ms() - started, lcg_checksum);
 
     return 0;
 }

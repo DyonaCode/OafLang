@@ -25,19 +25,23 @@ public static class BytecodeTests
 
     private static void GeneratesBranchingBytecodeForIf()
     {
-        const string source = "flag = 1 < 2; if flag => return 1; -> return 2;";
+        const string source = "flux flag = 1; loop flag > 0 => flag -= 1; if flag > 0 => return 1; -> return 2;";
         var result = Compile(source);
 
         TestAssertions.False(result.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error));
 
         var instructions = result.BytecodeProgram.Functions[0].Instructions;
-        TestAssertions.True(instructions.Any(i => i.OpCode == BytecodeOpCode.JumpIfTrue), "Expected jump-if-true instruction.");
+        TestAssertions.True(
+            instructions.Any(i => i.OpCode is BytecodeOpCode.JumpIfTrue
+                or BytecodeOpCode.JumpIfBinaryIntTrue
+                or BytecodeOpCode.JumpIfBinaryIntConstRightTrue),
+            "Expected conditional jump instruction.");
         TestAssertions.True(instructions.Any(i => i.OpCode == BytecodeOpCode.Jump), "Expected jump instruction.");
     }
 
     private static void EmitsIntegerSpecializedBinaryInstructions()
     {
-        const string source = "flux x = 2; flux y = 3; return x * y + 1;";
+        const string source = "flux x = 3; flux y = 2; loop x > 0 => { y += x; x -= 1; } return y * x;";
         var result = Compile(source);
         TestAssertions.False(result.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error));
 
@@ -49,7 +53,7 @@ public static class BytecodeTests
 
     private static void EmitsIntegerConstRightBinaryInstruction()
     {
-        const string source = "flux x = 1; x += 2; return x;";
+        const string source = "flux x = 3; loop x > 0 => x -= 1; x += 2; return x;";
         var result = Compile(source);
         TestAssertions.False(result.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error));
 

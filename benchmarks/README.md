@@ -15,6 +15,9 @@ The suite currently includes:
 1. `sum_xor`: integer arithmetic + loop throughput
 2. `prime_trial`: trial-division prime counting
 3. `affine_grid`: O(n^3) arithmetic-heavy nested loops
+4. `branch_mix`: branch-heavy bitwise/arithmetic control flow
+5. `gcd_fold`: modulo-heavy Euclidean reduction workload
+6. `lcg_stream`: dependency-chain pseudo-random recurrence
 
 ## Quick Run
 
@@ -42,16 +45,16 @@ Parameters:
 - `--sum-n`: upper bound for `sum_xor`
 - `--prime-n`: upper bound for `prime_trial`
 - `--matrix-n`: grid side length for `affine_grid`
-- `--oaf-mode`: `native` (default), `tiered`, `vm`, or `both` (`vm` + `exe`)
+- `--oaf-mode`: `all` (default), `native`, `tiered`, `vm`, `both` (`vm` + `exe`), or `mlir` (`mlir+vm` + `mlir+exe`)
 - `--oaf-cli`: optional executable/command for Oaf CLI. Default is `dotnet run --configuration Release --`.
 - `--out`: explicit output CSV path
 
-Example using installed SDK tool and including both VM + executable rows:
+Example using installed SDK tool and including VM/native plus MLIR VM/native rows:
 
 ```bash
 ./scripts/benchmark/run_c_rust_benchmarks.sh \
   --iterations 5 \
-  --oaf-mode both \
+  --oaf-mode all \
   --oaf-cli ./.oaf/sdk-tools/oaf
 ```
 
@@ -73,6 +76,12 @@ Use `--tiered` to run in VM first, then switch hot iterations to native:
 
 ```bash
 dotnet run -- --benchmark-kernels --tiered --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
+```
+
+Use `--compilation-target mlir` to benchmark the MLIR-targeted compilation path with the same runtime outputs:
+
+```bash
+dotnet run -- --benchmark-kernels --compilation-target mlir --iterations 5 --sum-n 5000000 --prime-n 30000 --matrix-n 48
 ```
 
 ## Notes for Fair Comparisons

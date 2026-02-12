@@ -248,6 +248,11 @@ public static class OafNativeKernelExecutor
 
         psi.ArgumentList.Add("-O3");
         psi.ArgumentList.Add("-std=c11");
+        if (!OperatingSystem.IsWindows())
+        {
+            psi.ArgumentList.Add("-march=native");
+            psi.ArgumentList.Add("-mtune=native");
+        }
         psi.ArgumentList.Add(sourcePath);
         psi.ArgumentList.Add("-o");
         psi.ArgumentList.Add(executablePath);
@@ -293,7 +298,10 @@ public static class OafNativeKernelExecutor
         builder.AppendLine();
 
         builder.AppendLine("static int64_t run_once(void) {");
-        builder.AppendLine($"    int64_t s[{slotCount}] = {{0}};");
+        for (var i = 0; i < slotCount; i++)
+        {
+            builder.AppendLine($"    int64_t s{i} = 0;");
+        }
         builder.AppendLine("    goto L0;");
         builder.AppendLine();
 
@@ -359,19 +367,19 @@ public static class OafNativeKernelExecutor
         return instruction.OpCode switch
         {
             BytecodeOpCode.Nop => $"    goto {nextLabel};",
-            BytecodeOpCode.LoadConst => $"    s[{instruction.A}] = {RenderConstant(constants[instruction.B])}; goto {nextLabel};",
-            BytecodeOpCode.Move => $"    s[{instruction.A}] = s[{instruction.B}]; goto {nextLabel};",
-            BytecodeOpCode.Unary => $"    s[{instruction.A}] = {RenderUnary((BytecodeUnaryOperator)instruction.B, $"s[{instruction.C}]")}; goto {nextLabel};",
-            BytecodeOpCode.Binary => $"    s[{instruction.A}] = {RenderBinary((BytecodeBinaryOperator)instruction.B, $"s[{instruction.C}]", $"s[{instruction.D}]")}; goto {nextLabel};",
-            BytecodeOpCode.BinaryInt => $"    s[{instruction.A}] = {RenderBinary((BytecodeBinaryOperator)instruction.B, $"s[{instruction.C}]", $"s[{instruction.D}]")}; goto {nextLabel};",
-            BytecodeOpCode.BinaryIntConstRight => $"    s[{instruction.A}] = {RenderBinary((BytecodeBinaryOperator)instruction.B, $"s[{instruction.C}]", RenderConstant(constants[instruction.D]))}; goto {nextLabel};",
-            BytecodeOpCode.JumpIfBinaryIntTrue => $"    if ({RenderBinary((BytecodeBinaryOperator)instruction.C, $"s[{instruction.A}]", $"s[{instruction.B}]")} != 0) goto L{NormalizeJumpTarget(instruction.D, instructionCount)}; goto {nextLabel};",
-            BytecodeOpCode.JumpIfBinaryIntConstRightTrue => $"    if ({RenderBinary((BytecodeBinaryOperator)instruction.C, $"s[{instruction.A}]", RenderConstant(constants[instruction.B]))} != 0) goto L{NormalizeJumpTarget(instruction.D, instructionCount)}; goto {nextLabel};",
-            BytecodeOpCode.Cast => $"    s[{instruction.A}] = {RenderCast((IrTypeKind)instruction.C, $"s[{instruction.B}]")}; goto {nextLabel};",
+            BytecodeOpCode.LoadConst => $"    {Slot(instruction.A)} = {RenderConstant(constants[instruction.B])}; goto {nextLabel};",
+            BytecodeOpCode.Move => $"    {Slot(instruction.A)} = {Slot(instruction.B)}; goto {nextLabel};",
+            BytecodeOpCode.Unary => $"    {Slot(instruction.A)} = {RenderUnary((BytecodeUnaryOperator)instruction.B, Slot(instruction.C))}; goto {nextLabel};",
+            BytecodeOpCode.Binary => $"    {Slot(instruction.A)} = {RenderBinary((BytecodeBinaryOperator)instruction.B, Slot(instruction.C), Slot(instruction.D))}; goto {nextLabel};",
+            BytecodeOpCode.BinaryInt => $"    {Slot(instruction.A)} = {RenderBinary((BytecodeBinaryOperator)instruction.B, Slot(instruction.C), Slot(instruction.D))}; goto {nextLabel};",
+            BytecodeOpCode.BinaryIntConstRight => $"    {Slot(instruction.A)} = {RenderBinary((BytecodeBinaryOperator)instruction.B, Slot(instruction.C), RenderConstant(constants[instruction.D]))}; goto {nextLabel};",
+            BytecodeOpCode.JumpIfBinaryIntTrue => $"    if ({RenderBinary((BytecodeBinaryOperator)instruction.C, Slot(instruction.A), Slot(instruction.B))} != 0) goto L{NormalizeJumpTarget(instruction.D, instructionCount)}; goto {nextLabel};",
+            BytecodeOpCode.JumpIfBinaryIntConstRightTrue => $"    if ({RenderBinary((BytecodeBinaryOperator)instruction.C, Slot(instruction.A), RenderConstant(constants[instruction.B]))} != 0) goto L{NormalizeJumpTarget(instruction.D, instructionCount)}; goto {nextLabel};",
+            BytecodeOpCode.Cast => $"    {Slot(instruction.A)} = {RenderCast((IrTypeKind)instruction.C, Slot(instruction.B))}; goto {nextLabel};",
             BytecodeOpCode.Jump => $"    goto L{NormalizeJumpTarget(instruction.A, instructionCount)};",
-            BytecodeOpCode.JumpIfTrue => $"    if (s[{instruction.A}] != 0) goto L{NormalizeJumpTarget(instruction.B, instructionCount)}; goto {nextLabel};",
-            BytecodeOpCode.JumpIfFalse => $"    if (s[{instruction.A}] == 0) goto L{NormalizeJumpTarget(instruction.B, instructionCount)}; goto {nextLabel};",
-            BytecodeOpCode.Return => instruction.A < 0 ? "    return 0;" : $"    return s[{instruction.A}];",
+            BytecodeOpCode.JumpIfTrue => $"    if ({Slot(instruction.A)} != 0) goto L{NormalizeJumpTarget(instruction.B, instructionCount)}; goto {nextLabel};",
+            BytecodeOpCode.JumpIfFalse => $"    if ({Slot(instruction.A)} == 0) goto L{NormalizeJumpTarget(instruction.B, instructionCount)}; goto {nextLabel};",
+            BytecodeOpCode.Return => instruction.A < 0 ? "    return 0;" : $"    return {Slot(instruction.A)};",
             _ => throw new InvalidOperationException($"Unsupported opcode '{instruction.OpCode}' for native kernel execution.")
         };
     }
@@ -388,15 +396,18 @@ public static class OafNativeKernelExecutor
         };
     }
 
-    private static string RenderBinary(BytecodeBinaryOperator operation, string left, string right)
+    private static string RenderBinary(
+        BytecodeBinaryOperator operation,
+        string left,
+        string right)
     {
         return operation switch
         {
             BytecodeBinaryOperator.Add => $"(({left}) + ({right}))",
             BytecodeBinaryOperator.Subtract => $"(({left}) - ({right}))",
             BytecodeBinaryOperator.Multiply => $"(({left}) * ({right}))",
-            BytecodeBinaryOperator.Divide => $"(({right}) == 0 ? 0 : (({left}) / ({right})))",
-            BytecodeBinaryOperator.Modulo => $"(({right}) == 0 ? 0 : (({left}) % ({right})))",
+            BytecodeBinaryOperator.Divide => $"(({left}) / ({right}))",
+            BytecodeBinaryOperator.Modulo => $"(({left}) % ({right}))",
             BytecodeBinaryOperator.Root => $"((int64_t)pow((double)({left}), 1.0 / (double)({right})))",
             BytecodeBinaryOperator.ShiftLeft => $"(({left}) << (int)({right}))",
             BytecodeBinaryOperator.ShiftRight => $"(({left}) >> (int)({right}))",
@@ -439,6 +450,11 @@ public static class OafNativeKernelExecutor
         }
 
         return target;
+    }
+
+    private static string Slot(int index)
+    {
+        return $"s{index}";
     }
 
     private static string RenderConstant(object? value)

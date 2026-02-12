@@ -12,6 +12,8 @@ public enum SyntaxNodeKind
     LoopStatement,
     BreakStatement,
     ContinueStatement,
+    ModuleDeclarationStatement,
+    ImportStatement,
 
     StructDeclarationStatement,
     ClassDeclarationStatement,

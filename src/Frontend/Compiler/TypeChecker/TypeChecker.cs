@@ -17,6 +17,8 @@ public sealed class TypeChecker
 
     private readonly DiagnosticBag _diagnostics;
     private readonly Dictionary<string, UserDefinedTypeSymbol> _userDefinedTypes = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _importedModules = new(StringComparer.Ordinal);
+    private string? _currentModule;
     private int _loopDepth;
 
     public TypeChecker(DiagnosticBag diagnostics)
@@ -28,11 +30,27 @@ public sealed class TypeChecker
 
     public void Check(CompilationUnitSyntax compilationUnit)
     {
+        _currentModule = null;
+        _importedModules.Clear();
+
         CollectTypeDeclarations(compilationUnit);
         ValidateTypeDeclarations(compilationUnit);
 
         foreach (var statement in compilationUnit.Statements)
         {
+            if (statement is ModuleDeclarationStatementSyntax moduleDeclaration)
+            {
+                _currentModule = moduleDeclaration.ModuleName;
+                _importedModules.Clear();
+                continue;
+            }
+
+            if (statement is ImportStatementSyntax importStatement)
+            {
+                _importedModules.Add(importStatement.ModuleName);
+                continue;
+            }
+
             if (statement is TypeDeclarationStatementSyntax)
             {
                 continue;
@@ -44,8 +62,20 @@ public sealed class TypeChecker
 
     private void CollectTypeDeclarations(CompilationUnitSyntax compilationUnit)
     {
-        foreach (var declaration in compilationUnit.Statements.OfType<TypeDeclarationStatementSyntax>())
+        string? moduleContext = null;
+        foreach (var statement in compilationUnit.Statements)
         {
+            if (statement is ModuleDeclarationStatementSyntax moduleDeclaration)
+            {
+                moduleContext = moduleDeclaration.ModuleName;
+                continue;
+            }
+
+            if (statement is not TypeDeclarationStatementSyntax declaration)
+            {
+                continue;
+            }
+
             var genericParameters = new List<GenericTypeParameterSymbol>();
             var seenNames = new HashSet<string>(StringComparer.Ordinal);
 
@@ -70,22 +100,37 @@ public sealed class TypeChecker
             };
 
             var symbol = new UserDefinedTypeSymbol(declaration.Name, kind, genericParameters);
+            var qualifiedName = QualifyTopLevelName(moduleContext, declaration.Name);
+            symbol = new UserDefinedTypeSymbol(qualifiedName, kind, genericParameters);
 
             if (!Symbols.TryDeclareType(symbol))
             {
-                ReportTypeError($"Type '{declaration.Name}' is already declared.", declaration);
+                ReportTypeError($"Type '{qualifiedName}' is already declared.", declaration);
                 continue;
             }
 
-            _userDefinedTypes[declaration.Name] = symbol;
+            _userDefinedTypes[qualifiedName] = symbol;
         }
     }
 
     private void ValidateTypeDeclarations(CompilationUnitSyntax compilationUnit)
     {
-        foreach (var declaration in compilationUnit.Statements.OfType<TypeDeclarationStatementSyntax>())
+        string? moduleContext = null;
+        foreach (var statement in compilationUnit.Statements)
         {
-            if (!_userDefinedTypes.TryGetValue(declaration.Name, out var typeSymbol))
+            if (statement is ModuleDeclarationStatementSyntax moduleDeclaration)
+            {
+                moduleContext = moduleDeclaration.ModuleName;
+                continue;
+            }
+
+            if (statement is not TypeDeclarationStatementSyntax declaration)
+            {
+                continue;
+            }
+
+            var qualifiedName = QualifyTopLevelName(moduleContext, declaration.Name);
+            if (!_userDefinedTypes.TryGetValue(qualifiedName, out var typeSymbol))
             {
                 continue;
             }
@@ -187,7 +232,7 @@ public sealed class TypeChecker
             return genericTypeParameter;
         }
 
-        if (!Symbols.TryLookupType(typeReference.Name, out var resolvedType) || resolvedType is null)
+        if (!TryLookupTypeSymbol(typeReference.Name, out var resolvedType))
         {
             ReportTypeError($"Unknown type '{typeReference.Name}'.", typeReference);
             return PrimitiveTypeSymbol.Error;
@@ -309,6 +354,15 @@ public sealed class TypeChecker
 
                 break;
 
+            case ModuleDeclarationStatementSyntax moduleDeclaration:
+                _currentModule = moduleDeclaration.ModuleName;
+                _importedModules.Clear();
+                break;
+
+            case ImportStatementSyntax importStatement:
+                _importedModules.Add(importStatement.ModuleName);
+                break;
+
             case TypeDeclarationStatementSyntax:
                 break;
         }
@@ -318,6 +372,7 @@ public sealed class TypeChecker
     {
         var initializerType = CheckExpression(declaration.Initializer);
         var variableType = initializerType;
+        var symbolName = ResolveDeclarationName(declaration.Identifier);
 
         if (declaration.DeclaredType is not null)
         {
@@ -338,18 +393,18 @@ public sealed class TypeChecker
             }
         }
 
-        if (Symbols.IsDeclaredInCurrentScope(declaration.Identifier))
+        if (Symbols.IsDeclaredInCurrentScope(symbolName))
         {
             ReportTypeError($"Variable '{declaration.Identifier}' is already declared in this scope.", declaration);
             return;
         }
 
-        Symbols.TryDeclare(new VariableSymbol(declaration.Identifier, variableType, declaration.IsMutable));
+        Symbols.TryDeclare(new VariableSymbol(symbolName, variableType, declaration.IsMutable));
     }
 
     private void CheckAssignment(AssignmentStatementSyntax assignment)
     {
-        if (!Symbols.TryLookup(assignment.Identifier, out var symbol) || symbol is null)
+        if (!TryLookupVariableSymbol(assignment.Identifier, out var symbol))
         {
             ReportTypeError($"Variable '{assignment.Identifier}' is not declared.", assignment);
             return;
@@ -396,7 +451,7 @@ public sealed class TypeChecker
 
     private TypeSymbol LookupName(NameExpressionSyntax nameExpression)
     {
-        if (Symbols.TryLookup(nameExpression.Identifier, out var symbol) && symbol is not null)
+        if (TryLookupVariableSymbol(nameExpression.Identifier, out var symbol))
         {
             return symbol.Type;
         }
@@ -615,6 +670,156 @@ public sealed class TypeChecker
         }
 
         return PrimitiveTypeSymbol.Int;
+    }
+
+    private string ResolveDeclarationName(string identifier)
+    {
+        if (Symbols.ScopeDepth == 1 && !string.IsNullOrWhiteSpace(_currentModule))
+        {
+            return QualifyTopLevelName(_currentModule, identifier);
+        }
+
+        return identifier;
+    }
+
+    private static string QualifyTopLevelName(string? moduleName, string symbolName)
+    {
+        if (string.IsNullOrWhiteSpace(moduleName))
+        {
+            return symbolName;
+        }
+
+        return $"{moduleName}.{symbolName}";
+    }
+
+    private bool TryLookupVariableSymbol(string name, out VariableSymbol symbol)
+    {
+        if (name.Contains('.', StringComparison.Ordinal))
+        {
+            var moduleName = ExtractModuleName(name);
+            if (!IsModuleAccessible(moduleName))
+            {
+                symbol = null!;
+                return false;
+            }
+
+            if (Symbols.TryLookup(name, out var exactSymbol) && exactSymbol is not null)
+            {
+                symbol = exactSymbol;
+                return true;
+            }
+
+            symbol = null!;
+            return false;
+        }
+
+        if (Symbols.TryLookup(name, out var localSymbol) && localSymbol is not null)
+        {
+            symbol = localSymbol;
+            return true;
+        }
+
+        var candidates = new List<VariableSymbol>();
+        if (!string.IsNullOrWhiteSpace(_currentModule))
+        {
+            var currentQualified = QualifyTopLevelName(_currentModule, name);
+            if (Symbols.TryLookup(currentQualified, out var currentScoped) && currentScoped is not null)
+            {
+                candidates.Add(currentScoped);
+            }
+        }
+
+        foreach (var importedModule in _importedModules)
+        {
+            var qualified = QualifyTopLevelName(importedModule, name);
+            if (Symbols.TryLookup(qualified, out var importedScoped) && importedScoped is not null)
+            {
+                candidates.Add(importedScoped);
+            }
+        }
+
+        if (candidates.Count == 1)
+        {
+            symbol = candidates[0];
+            return true;
+        }
+
+        symbol = null!;
+        return false;
+    }
+
+    private bool TryLookupTypeSymbol(string typeName, out TypeSymbol symbol)
+    {
+        if (typeName.Contains('.', StringComparison.Ordinal))
+        {
+            var moduleName = ExtractModuleName(typeName);
+            if (!IsModuleAccessible(moduleName))
+            {
+                symbol = null!;
+                return false;
+            }
+
+            if (Symbols.TryLookupType(typeName, out var qualifiedType) && qualifiedType is not null)
+            {
+                symbol = qualifiedType;
+                return true;
+            }
+
+            symbol = null!;
+            return false;
+        }
+
+        if (Symbols.TryLookupType(typeName, out var builtInOrCurrent) && builtInOrCurrent is not null)
+        {
+            symbol = builtInOrCurrent;
+            return true;
+        }
+
+        var candidates = new List<TypeSymbol>();
+        if (!string.IsNullOrWhiteSpace(_currentModule))
+        {
+            var currentQualified = QualifyTopLevelName(_currentModule, typeName);
+            if (Symbols.TryLookupType(currentQualified, out var currentScoped) && currentScoped is not null)
+            {
+                candidates.Add(currentScoped);
+            }
+        }
+
+        foreach (var importedModule in _importedModules)
+        {
+            var qualified = QualifyTopLevelName(importedModule, typeName);
+            if (Symbols.TryLookupType(qualified, out var importedScoped) && importedScoped is not null)
+            {
+                candidates.Add(importedScoped);
+            }
+        }
+
+        if (candidates.Count == 1)
+        {
+            symbol = candidates[0];
+            return true;
+        }
+
+        symbol = null!;
+        return false;
+    }
+
+    private bool IsModuleAccessible(string moduleName)
+    {
+        if (string.Equals(moduleName, _currentModule, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return _importedModules.Contains(moduleName);
+    }
+
+    private static string ExtractModuleName(string qualifiedName)
+    {
+        var lastDot = qualifiedName.LastIndexOf('.');
+        return lastDot <= 0
+            ? string.Empty
+            : qualifiedName[..lastDot];
     }
 
     private void ReportTypeError(string message, SyntaxNode node)

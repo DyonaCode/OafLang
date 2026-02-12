@@ -1,3 +1,4 @@
+using System.Text;
 using Oaf.Frontend.Compiler.AST;
 using Oaf.Frontend.Compiler.Diagnostics;
 using Oaf.Frontend.Compiler.Lexer;
@@ -53,6 +54,8 @@ public sealed class Parser
         return Current.Kind switch
         {
             TokenKind.OpenBraceToken => ParseBraceBlockStatement(),
+            TokenKind.ModuleKeyword => ParseModuleDeclarationStatement(),
+            TokenKind.ImportKeyword => ParseImportStatement(),
             TokenKind.IfKeyword => ParseIfStatement(),
             TokenKind.LoopKeyword => ParseLoopStatement(isParallel: false),
             TokenKind.ParalloopKeyword => ParseLoopStatement(isParallel: true),
@@ -74,25 +77,47 @@ public sealed class Parser
             return ParseTypedVariableDeclarationStatement(isMutable: false, fallbackSpan: null);
         }
 
-        if (Current.Kind == TokenKind.IdentifierToken)
+        if (TryGetQualifiedIdentifierLengthAtCurrent(out var qualifiedLength))
         {
-            if (Peek(1).Kind == TokenKind.EqualsToken)
+            var assignmentOperator = Peek(qualifiedLength).Kind;
+            if (assignmentOperator == TokenKind.EqualsToken)
             {
-                if (IsVariableDeclared(Current.Text))
+                if (qualifiedLength == 1 && IsVariableDeclared(Current.Text))
                 {
                     return ParseAssignmentStatement();
                 }
 
-                return ParseInferredVariableDeclarationStatement(isMutable: false, fallbackSpan: null);
+                if (qualifiedLength == 1)
+                {
+                    return ParseInferredVariableDeclarationStatement(isMutable: false, fallbackSpan: null);
+                }
+
+                return ParseAssignmentStatement();
             }
 
-            if (IsAssignmentOperator(Peek(1).Kind))
+            if (IsAssignmentOperator(assignmentOperator))
             {
                 return ParseAssignmentStatement();
             }
         }
 
         return ParseExpressionStatement();
+    }
+
+    private StatementSyntax ParseModuleDeclarationStatement()
+    {
+        var moduleToken = Match(TokenKind.ModuleKeyword, "Expected 'module'.");
+        var (moduleName, _) = ParseQualifiedIdentifier("Expected module name.");
+        Match(TokenKind.SemicolonToken, "Expected ';' after module declaration.");
+        return new ModuleDeclarationStatementSyntax(moduleName, SpanFrom(moduleToken));
+    }
+
+    private StatementSyntax ParseImportStatement()
+    {
+        var importToken = Match(TokenKind.ImportKeyword, "Expected 'import'.");
+        var (moduleName, _) = ParseQualifiedIdentifier("Expected module name.");
+        Match(TokenKind.SemicolonToken, "Expected ';' after import statement.");
+        return new ImportStatementSyntax(moduleName, SpanFrom(importToken));
     }
 
     private StatementSyntax ParseFluxVariableDeclarationStatement()
@@ -363,11 +388,11 @@ public sealed class Parser
 
     private TypeReferenceSyntax ParseTypeReference()
     {
-        var nameToken = Match(TokenKind.IdentifierToken, "Expected type name.");
+        var (name, nameSpan) = ParseQualifiedIdentifier("Expected type name.");
 
         if (Current.Kind != TokenKind.LessToken)
         {
-            return new TypeReferenceSyntax(nameToken.Text, [], SpanFrom(nameToken));
+            return new TypeReferenceSyntax(name, [], nameSpan);
         }
 
         Match(TokenKind.LessToken, "Expected '<' to start type argument list.");
@@ -386,12 +411,12 @@ public sealed class Parser
         }
 
         Match(TokenKind.GreaterToken, "Expected '>' to close type argument list.");
-        return new TypeReferenceSyntax(nameToken.Text, typeArguments, SpanFrom(nameToken));
+        return new TypeReferenceSyntax(name, typeArguments, nameSpan);
     }
 
     private StatementSyntax ParseAssignmentStatement()
     {
-        var identifierToken = Match(TokenKind.IdentifierToken, "Expected identifier on assignment left side.");
+        var (identifier, span) = ParseQualifiedIdentifier("Expected identifier on assignment left side.");
         var assignmentToken = NextToken();
 
         if (!IsAssignmentOperator(assignmentToken.Kind))
@@ -403,7 +428,7 @@ public sealed class Parser
         var expression = ParseExpression();
         Match(TokenKind.SemicolonToken, "Expected ';' after assignment.");
 
-        return new AssignmentStatementSyntax(identifierToken.Text, assignmentToken.Kind, expression, SpanFrom(identifierToken));
+        return new AssignmentStatementSyntax(identifier, assignmentToken.Kind, expression, span);
     }
 
     private StatementSyntax ParseExpressionStatement()
@@ -506,8 +531,8 @@ public sealed class Parser
 
         if (Current.Kind == TokenKind.IdentifierToken)
         {
-            var identifier = NextToken();
-            return new NameExpressionSyntax(identifier.Text, SpanFrom(identifier));
+            var (identifier, span) = ParseQualifiedIdentifier("Expected identifier.");
+            return new NameExpressionSyntax(identifier, span);
         }
 
         var unexpected = NextToken();
@@ -562,6 +587,10 @@ public sealed class Parser
         }
 
         cursor++;
+        while (PeekAbsolute(cursor).Kind == TokenKind.DotToken && PeekAbsolute(cursor + 1).Kind == TokenKind.IdentifierToken)
+        {
+            cursor += 2;
+        }
 
         if (PeekAbsolute(cursor).Kind != TokenKind.LessToken)
         {
@@ -613,7 +642,9 @@ public sealed class Parser
 
     private bool IsStatementStart(TokenKind kind)
     {
-        return kind is TokenKind.IfKeyword
+        return kind is TokenKind.ModuleKeyword
+            or TokenKind.ImportKeyword
+            or TokenKind.IfKeyword
             or TokenKind.LoopKeyword
             or TokenKind.ParalloopKeyword
             or TokenKind.ReturnKeyword
@@ -625,6 +656,39 @@ public sealed class Parser
             or TokenKind.EnumKeyword
             or TokenKind.IdentifierToken
             or TokenKind.OpenBraceToken;
+    }
+
+    private bool TryGetQualifiedIdentifierLengthAtCurrent(out int tokenLength)
+    {
+        tokenLength = 0;
+        if (Current.Kind != TokenKind.IdentifierToken)
+        {
+            return false;
+        }
+
+        tokenLength = 1;
+        while (Peek(tokenLength).Kind == TokenKind.DotToken && Peek(tokenLength + 1).Kind == TokenKind.IdentifierToken)
+        {
+            tokenLength += 2;
+        }
+
+        return true;
+    }
+
+    private (string Name, SourceSpan Span) ParseQualifiedIdentifier(string errorMessage)
+    {
+        var first = Match(TokenKind.IdentifierToken, errorMessage);
+        var builder = new StringBuilder(first.Text);
+
+        while (Current.Kind == TokenKind.DotToken && Peek(1).Kind == TokenKind.IdentifierToken)
+        {
+            NextToken(); // dot
+            var segment = Match(TokenKind.IdentifierToken, "Expected identifier after '.'.");
+            builder.Append('.');
+            builder.Append(segment.Text);
+        }
+
+        return (builder.ToString(), SpanFrom(first));
     }
 
     private bool IsExpressionStart(TokenKind kind)

@@ -31,7 +31,13 @@ jobs:
         run: dotnet build --configuration Release --no-restore
 
       - name: Run self-test suite
-        run: dotnet run --configuration Release -- --self-test
+        shell: bash
+        run: dotnet run --configuration Release -- --self-test | tee self-test-output.txt
+
+      - name: Summarize parity checks
+        if: always()
+        shell: bash
+        run: bash scripts/ci/append_parity_summary.sh self-test-output.txt "${{ matrix.os }}"
 
   c-runtime-smoke:
     name: C Runtime Smoke (ubuntu)

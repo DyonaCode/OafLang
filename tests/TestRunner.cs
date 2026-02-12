@@ -20,6 +20,7 @@ public static class TestRunner
         tests.AddRange(TypeCheckerTests.GetTests().Select(test => ($"type_checker::{test.Name}", test.Test)));
         tests.AddRange(OwnershipTests.GetTests().Select(test => ($"ownership::{test.Name}", test.Test)));
         tests.AddRange(CodeGenTests.GetTests().Select(test => ($"codegen::{test.Name}", test.Test)));
+        tests.AddRange(MlirPrinterTests.GetTests().Select(test => ($"codegen::{test.Name}", test.Test)));
         tests.AddRange(CompilerDriverPerformanceTests.GetTests().Select(test => ($"codegen::{test.Name}", test.Test)));
         tests.AddRange(BytecodeTests.GetTests().Select(test => ($"bytecode::{test.Name}", test.Test)));
         tests.AddRange(BenchmarkTests.GetTests().Select(test => ($"benchmark::{test.Name}", test.Test)));
@@ -27,6 +28,7 @@ public static class TestRunner
         tests.AddRange(PackageManagerTests.GetTests().Select(test => ($"tooling::{test.Name}", test.Test)));
         tests.AddRange(DocumentationGeneratorTests.GetTests().Select(test => ($"tooling::{test.Name}", test.Test)));
         tests.AddRange(FormatterTests.GetTests().Select(test => ($"tooling::{test.Name}", test.Test)));
+        tests.AddRange(SdkProjectToolsTests.GetTests().Select(test => ($"tooling::{test.Name}", test.Test)));
         tests.AddRange(CompilerIntegrationTests.GetTests().Select(test => ($"integration::{test.Name}", test.Test)));
         tests.AddRange(ExampleProgramsIntegrationTests.GetTests().Select(test => ($"integration::{test.Name}", test.Test)));
 

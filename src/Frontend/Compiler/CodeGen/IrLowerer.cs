@@ -7,8 +7,10 @@ public sealed class IrLowerer
 {
     private readonly Stack<Dictionary<string, IrVariableValue>> _scopes = new();
     private readonly Stack<(string BreakLabel, string ContinueLabel)> _loopLabels = new();
+    private readonly HashSet<string> _importedModules = new(StringComparer.Ordinal);
     private int _tempCounter;
     private int _labelCounter;
+    private string? _currentModule;
 
     private IrFunction? _function;
     private IrBasicBlock? _currentBlock;
@@ -19,6 +21,8 @@ public sealed class IrLowerer
         _labelCounter = 0;
         _scopes.Clear();
         _loopLabels.Clear();
+        _currentModule = null;
+        _importedModules.Clear();
 
         var module = new IrModule();
         _function = new IrFunction("main");
@@ -46,6 +50,15 @@ public sealed class IrLowerer
         switch (statement)
         {
             case TypeDeclarationStatementSyntax:
+                return;
+
+            case ModuleDeclarationStatementSyntax moduleDeclaration:
+                _currentModule = moduleDeclaration.ModuleName;
+                _importedModules.Clear();
+                return;
+
+            case ImportStatementSyntax importStatement:
+                _importedModules.Add(importStatement.ModuleName);
                 return;
 
             case BlockStatementSyntax block:
@@ -106,7 +119,8 @@ public sealed class IrLowerer
             ? InferTypeFromExpression(declaration.Initializer)
             : IrType.FromTypeName(declaration.DeclaredType.Name);
 
-        var variable = new IrVariableValue(declaredType, declaration.Identifier);
+        var symbolName = ResolveDeclarationName(declaration.Identifier);
+        var variable = new IrVariableValue(declaredType, symbolName);
         DeclareVariable(variable);
 
         var value = LowerExpression(declaration.Initializer);
@@ -115,7 +129,7 @@ public sealed class IrLowerer
 
     private void LowerAssignment(AssignmentStatementSyntax assignment)
     {
-        var variable = ResolveVariable(assignment.Identifier) ?? new IrVariableValue(IrType.Unknown, assignment.Identifier);
+        var variable = ResolveVariableWithContext(assignment.Identifier) ?? new IrVariableValue(IrType.Unknown, assignment.Identifier);
         var value = LowerExpression(assignment.Expression);
 
         if (assignment.OperatorKind == TokenKind.EqualsToken)
@@ -214,7 +228,7 @@ public sealed class IrLowerer
                 return new IrConstantValue(InferTypeFromLiteral(literal.Value), literal.Value);
 
             case NameExpressionSyntax name:
-                return ResolveVariable(name.Identifier) ?? new IrVariableValue(IrType.Unknown, name.Identifier);
+                return ResolveVariableWithContext(name.Identifier) ?? new IrVariableValue(IrType.Unknown, name.Identifier);
 
             case CastExpressionSyntax cast:
                 {
@@ -259,7 +273,7 @@ public sealed class IrLowerer
         return expression switch
         {
             LiteralExpressionSyntax literal => InferTypeFromLiteral(literal.Value),
-            NameExpressionSyntax name when ResolveVariable(name.Identifier) is { } variable => variable.Type,
+            NameExpressionSyntax name when ResolveVariableWithContext(name.Identifier) is { } scopedVariable => scopedVariable.Type,
             CastExpressionSyntax cast => IrType.FromTypeName(cast.TargetType.Name),
             UnaryExpressionSyntax unary => InferUnaryType(unary.OperatorKind, InferTypeFromExpression(unary.Operand)),
             BinaryExpressionSyntax binary => InferBinaryType(
@@ -424,6 +438,89 @@ public sealed class IrLowerer
     private void DeclareVariable(IrVariableValue variable)
     {
         _scopes.Peek()[variable.Name] = variable;
+    }
+
+    private string ResolveDeclarationName(string identifier)
+    {
+        if (IsTopLevelScope() && !string.IsNullOrWhiteSpace(_currentModule))
+        {
+            return QualifyTopLevelName(_currentModule, identifier);
+        }
+
+        return identifier;
+    }
+
+    private IrVariableValue? ResolveVariableWithContext(string name)
+    {
+        if (name.Contains('.', StringComparison.Ordinal))
+        {
+            var moduleName = ExtractModuleName(name);
+            if (!IsModuleAccessible(moduleName))
+            {
+                return null;
+            }
+
+            return ResolveVariable(name);
+        }
+
+        var local = ResolveVariable(name);
+        if (local is not null)
+        {
+            return local;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentModule))
+        {
+            var currentScoped = ResolveVariable(QualifyTopLevelName(_currentModule, name));
+            if (currentScoped is not null)
+            {
+                return currentScoped;
+            }
+        }
+
+        foreach (var import in _importedModules)
+        {
+            var importedScoped = ResolveVariable(QualifyTopLevelName(import, name));
+            if (importedScoped is not null)
+            {
+                return importedScoped;
+            }
+        }
+
+        return null;
+    }
+
+    private bool IsTopLevelScope()
+    {
+        return _scopes.Count == 1;
+    }
+
+    private static string QualifyTopLevelName(string? moduleName, string symbolName)
+    {
+        if (string.IsNullOrWhiteSpace(moduleName))
+        {
+            return symbolName;
+        }
+
+        return $"{moduleName}.{symbolName}";
+    }
+
+    private bool IsModuleAccessible(string moduleName)
+    {
+        if (string.Equals(moduleName, _currentModule, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return _importedModules.Contains(moduleName);
+    }
+
+    private static string ExtractModuleName(string qualifiedName)
+    {
+        var lastDot = qualifiedName.LastIndexOf('.');
+        return lastDot <= 0
+            ? string.Empty
+            : qualifiedName[..lastDot];
     }
 
     private IrVariableValue? ResolveVariable(string name)

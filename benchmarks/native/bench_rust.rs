@@ -111,6 +111,61 @@ fn run_affine_grid(n: usize) -> u64 {
     checksum
 }
 
+fn run_branch_mix(n: u64) -> u64 {
+    let mut acc = 0u64;
+    for i in 1..=n {
+        if (i % 2) == 0 {
+            acc = acc.wrapping_add(i << 1);
+        } else {
+            acc ^= i.wrapping_mul(3);
+        }
+
+        if (i % 7) == 0 {
+            acc = acc.wrapping_add(i >> 2);
+        } else {
+            acc ^= i % 16;
+        }
+
+        if (i % 97) == 0 {
+            acc = acc.wrapping_add(i.wrapping_mul((i % 13) + 1));
+        }
+    }
+
+    acc
+}
+
+fn run_gcd_fold(n: usize) -> u64 {
+    let mut checksum = 0u64;
+    for i in 1..=n as u64 {
+        let mut a = i.wrapping_mul(37).wrapping_add(17);
+        let mut b = i.wrapping_mul(53).wrapping_add(19);
+        while b != 0 {
+            let t = a % b;
+            a = b;
+            b = t;
+        }
+
+        checksum = checksum.wrapping_add(a.wrapping_mul((i % 16) + 1));
+    }
+
+    checksum
+}
+
+fn run_lcg_stream(n: u64) -> u64 {
+    let mut state = 123_456_789u64;
+    let mut checksum = 0u64;
+    for _ in 0..n {
+        state = (state.wrapping_mul(1_103_515_245).wrapping_add(12_345)) % 2_147_483_647;
+        if (state % 2) == 0 {
+            checksum = checksum.wrapping_add(state);
+        } else {
+            checksum ^= state;
+        }
+    }
+
+    checksum ^ state
+}
+
 fn mix_checksum(current: u64, value: u64, iteration: u64) -> u64 {
     let mixed = current
         ^ value
@@ -166,5 +221,41 @@ fn main() {
         options.iterations,
         started.elapsed().as_secs_f64() * 1000.0,
         grid_checksum,
+    );
+
+    let started = Instant::now();
+    let mut branch_checksum = 0u64;
+    for i in 0..options.iterations {
+        branch_checksum = mix_checksum(branch_checksum, run_branch_mix(options.sum_n), i as u64);
+    }
+    print_result(
+        "branch_mix",
+        options.iterations,
+        started.elapsed().as_secs_f64() * 1000.0,
+        branch_checksum,
+    );
+
+    let started = Instant::now();
+    let mut gcd_checksum = 0u64;
+    for i in 0..options.iterations {
+        gcd_checksum = mix_checksum(gcd_checksum, run_gcd_fold(options.prime_n), i as u64);
+    }
+    print_result(
+        "gcd_fold",
+        options.iterations,
+        started.elapsed().as_secs_f64() * 1000.0,
+        gcd_checksum,
+    );
+
+    let started = Instant::now();
+    let mut lcg_checksum = 0u64;
+    for i in 0..options.iterations {
+        lcg_checksum = mix_checksum(lcg_checksum, run_lcg_stream(options.sum_n), i as u64);
+    }
+    print_result(
+        "lcg_stream",
+        options.iterations,
+        started.elapsed().as_secs_f64() * 1000.0,
+        lcg_checksum,
     );
 }

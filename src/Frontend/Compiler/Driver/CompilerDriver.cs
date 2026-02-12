@@ -32,11 +32,14 @@ public sealed class CompilerDriver
         _cacheInsertionOrder.Clear();
     }
 
-    public CompilationResult CompileSource(string source)
+    public CompilationResult CompileSource(
+        string source,
+        CompilerCompilationTarget compilationTarget = CompilerCompilationTarget.Bytecode)
     {
         source ??= string.Empty;
+        var cacheKey = BuildCompilationCacheKey(source, compilationTarget);
 
-        if (_enableCompilationCache && _compilationCache.TryGetValue(source, out var cached))
+        if (_enableCompilationCache && _compilationCache.TryGetValue(cacheKey, out var cached))
         {
             CacheHits++;
             return cached;
@@ -61,8 +64,22 @@ public sealed class CompilerDriver
 
         var optimizationPipeline = new IrOptimizationPipeline();
         optimizationPipeline.AddPass(new ConstantFoldingPass());
+        optimizationPipeline.AddPass(new CopyPropagationPass());
+        optimizationPipeline.AddPass(new DeadStoreEliminationPass());
         optimizationPipeline.AddPass(new DeadTemporaryEliminationPass());
-        optimizationPipeline.Run(irModule);
+        for (var i = 0; i < 4; i++)
+        {
+            if (!optimizationPipeline.Run(irModule))
+            {
+                break;
+            }
+        }
+
+        if (compilationTarget == CompilerCompilationTarget.Mlir)
+        {
+            // MLIR target is currently an internal lowering stage that still emits runnable bytecode.
+            _ = MlirPrinter.Print(irModule);
+        }
 
         var bytecodeGenerator = new BytecodeGenerator();
         var bytecodeProgram = bytecodeGenerator.Generate(irModule);
@@ -70,7 +87,7 @@ public sealed class CompilerDriver
         var result = new CompilationResult(syntaxTree, diagnostics.Diagnostics.ToList(), typeChecker.Symbols, irModule, bytecodeProgram);
         if (_enableCompilationCache && _cacheCapacity > 0)
         {
-            AddToCompilationCache(source, result);
+            AddToCompilationCache(cacheKey, result);
         }
 
         return result;
@@ -83,11 +100,11 @@ public sealed class CompilerDriver
         return AstPrinter.Print(syntaxTree);
     }
 
-    private void AddToCompilationCache(string source, CompilationResult result)
+    private void AddToCompilationCache(string cacheKey, CompilationResult result)
     {
-        if (_compilationCache.ContainsKey(source))
+        if (_compilationCache.ContainsKey(cacheKey))
         {
-            _compilationCache[source] = result;
+            _compilationCache[cacheKey] = result;
             return;
         }
 
@@ -96,8 +113,8 @@ public sealed class CompilerDriver
             EvictOldestCacheEntry();
         }
 
-        _compilationCache[source] = result;
-        _cacheInsertionOrder.Enqueue(source);
+        _compilationCache[cacheKey] = result;
+        _cacheInsertionOrder.Enqueue(cacheKey);
     }
 
     private void EvictOldestCacheEntry()
@@ -110,5 +127,10 @@ public sealed class CompilerDriver
                 return;
             }
         }
+    }
+
+    private static string BuildCompilationCacheKey(string source, CompilerCompilationTarget target)
+    {
+        return $"{(int)target}:{source}";
     }
 }

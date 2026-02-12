@@ -11,12 +11,22 @@ public readonly record struct OafBenchmarkResult(
     int Iterations,
     double TotalMilliseconds,
     double MeanMilliseconds,
+    double MedianMilliseconds,
+    double P95Milliseconds,
     double OpsPerSecond);
 
 public readonly record struct OafBenchmarkRegression(
     string Name,
-    double MeanRatio,
-    double MaxAllowedMeanRatio);
+    BenchmarkStatistic Statistic,
+    double Ratio,
+    double MaxAllowedRatio);
+
+public enum BenchmarkStatistic
+{
+    Mean,
+    Median,
+    P95
+}
 
 public static class OafBenchmarkRunner
 {
@@ -74,7 +84,10 @@ public static class OafBenchmarkRunner
         return results;
     }
 
-    public static void PrintReport(TextWriter output, IReadOnlyList<OafBenchmarkResult> results)
+    public static void PrintReport(
+        TextWriter output,
+        IReadOnlyList<OafBenchmarkResult> results,
+        BenchmarkStatistic comparisonStatistic = BenchmarkStatistic.Mean)
     {
         output.WriteLine("Oaf Benchmark Report");
         output.WriteLine("------------------------");
@@ -83,11 +96,12 @@ public static class OafBenchmarkRunner
         {
             output.WriteLine(
                 $"{result.Name,-20} runtime={result.Runtime,-8} iterations={result.Iterations,5} total_ms={result.TotalMilliseconds,10:F3} " +
-                $"mean_ms={result.MeanMilliseconds,8:F4} ops/s={result.OpsPerSecond,10:F2}");
+                $"mean_ms={result.MeanMilliseconds,8:F4} median_ms={result.MedianMilliseconds,8:F4} " +
+                $"p95_ms={result.P95Milliseconds,8:F4} ops/s={result.OpsPerSecond,10:F2}");
         }
 
         output.WriteLine();
-        output.WriteLine("Comparison (Oaf vs C# baseline)");
+        output.WriteLine($"Comparison (Oaf vs C# baseline, statistic={comparisonStatistic.ToString().ToLowerInvariant()})");
         output.WriteLine("-----------------------------------");
 
         foreach (var group in results.GroupBy(static result => result.Name, StringComparer.Ordinal))
@@ -95,23 +109,25 @@ public static class OafBenchmarkRunner
             var oaf = group.FirstOrDefault(static result => string.Equals(result.Runtime, "oaf", StringComparison.Ordinal));
             var csharp = group.FirstOrDefault(static result => string.Equals(result.Runtime, "csharp", StringComparison.Ordinal));
 
-            if (string.IsNullOrEmpty(oaf.Name) || string.IsNullOrEmpty(csharp.Name) || csharp.MeanMilliseconds <= 0)
+            if (string.IsNullOrEmpty(oaf.Name) || string.IsNullOrEmpty(csharp.Name))
             {
                 continue;
             }
 
-            var ratio = oaf.MeanMilliseconds / csharp.MeanMilliseconds;
-            output.WriteLine($"{group.Key,-20} mean_ratio(oaf/csharp)={ratio:F3}x");
+            var ratio = ComputeRatio(oaf, csharp, comparisonStatistic);
+            output.WriteLine($"{group.Key,-20} {comparisonStatistic.ToString().ToLowerInvariant()}_ratio(oaf/csharp)={ratio:F3}x");
         }
     }
 
     public static IReadOnlyList<OafBenchmarkRegression> AnalyzeAgainstBaselines(
         IReadOnlyList<OafBenchmarkResult> results,
-        double maxAllowedMeanRatio)
+        double maxAllowedRatio,
+        BenchmarkStatistic statistic = BenchmarkStatistic.Mean,
+        IReadOnlyDictionary<string, double>? perBenchmarkMaxAllowedRatios = null)
     {
-        if (maxAllowedMeanRatio <= 0)
+        if (maxAllowedRatio <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(maxAllowedMeanRatio), "Maximum allowed ratio must be positive.");
+            throw new ArgumentOutOfRangeException(nameof(maxAllowedRatio), "Maximum allowed ratio must be positive.");
         }
 
         var regressions = new List<OafBenchmarkRegression>();
@@ -119,15 +135,27 @@ public static class OafBenchmarkRunner
         {
             var oaf = group.FirstOrDefault(static result => string.Equals(result.Runtime, "oaf", StringComparison.Ordinal));
             var csharp = group.FirstOrDefault(static result => string.Equals(result.Runtime, "csharp", StringComparison.Ordinal));
-            if (string.IsNullOrEmpty(oaf.Name) || string.IsNullOrEmpty(csharp.Name) || csharp.MeanMilliseconds <= 0)
+            if (string.IsNullOrEmpty(oaf.Name) || string.IsNullOrEmpty(csharp.Name))
             {
                 continue;
             }
 
-            var ratio = oaf.MeanMilliseconds / csharp.MeanMilliseconds;
-            if (ratio > maxAllowedMeanRatio)
+            var threshold = maxAllowedRatio;
+            if (perBenchmarkMaxAllowedRatios is not null &&
+                perBenchmarkMaxAllowedRatios.TryGetValue(group.Key, out var overrideThreshold))
             {
-                regressions.Add(new OafBenchmarkRegression(group.Key, ratio, maxAllowedMeanRatio));
+                if (overrideThreshold <= 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(perBenchmarkMaxAllowedRatios), $"Threshold override for '{group.Key}' must be positive.");
+                }
+
+                threshold = overrideThreshold;
+            }
+
+            var ratio = ComputeRatio(oaf, csharp, statistic);
+            if (ratio > threshold)
+            {
+                regressions.Add(new OafBenchmarkRegression(group.Key, statistic, ratio, threshold));
             }
         }
 
@@ -148,16 +176,14 @@ public static class OafBenchmarkRunner
         foreach (var regression in regressions.OrderBy(static item => item.Name, StringComparer.Ordinal))
         {
             output.WriteLine(
-                $"{regression.Name,-20} mean_ratio(oaf/csharp)={regression.MeanRatio:F3}x " +
-                $"threshold={regression.MaxAllowedMeanRatio:F3}x");
+                $"{regression.Name,-20} {regression.Statistic.ToString().ToLowerInvariant()}_ratio(oaf/csharp)={regression.Ratio:F3}x " +
+                $"threshold={regression.MaxAllowedRatio:F3}x");
         }
     }
 
     private static OafBenchmarkResult RunLexerBenchmark(int iterations)
     {
-        var stopwatch = Stopwatch.StartNew();
-
-        for (var i = 0; i < iterations; i++)
+        var timings = MeasureIterations(iterations, () =>
         {
             var lexer = new Lexer(LexerBenchmarkSource);
             var tokens = lexer.Lex();
@@ -165,28 +191,24 @@ public static class OafBenchmarkRunner
             {
                 throw new InvalidOperationException("Lexer benchmark produced no tokens.");
             }
-        }
+        });
 
-        stopwatch.Stop();
-        return BuildResult("lexer", "oaf", iterations, stopwatch.Elapsed);
+        return BuildResult("lexer", "oaf", iterations, timings);
     }
 
     private static OafBenchmarkResult RunCompilerBenchmark(int iterations)
     {
         var driver = new CompilerDriver(enableCompilationCache: false);
-        var stopwatch = Stopwatch.StartNew();
-
-        for (var i = 0; i < iterations; i++)
+        var timings = MeasureIterations(iterations, () =>
         {
             var result = driver.CompileSource(CompilerBenchmarkSource);
             if (!result.Success)
             {
                 throw new InvalidOperationException("Compiler benchmark source failed compilation.");
             }
-        }
+        });
 
-        stopwatch.Stop();
-        return BuildResult("compiler_pipeline", "oaf", iterations, stopwatch.Elapsed);
+        return BuildResult("compiler_pipeline", "oaf", iterations, timings);
     }
 
     private static OafBenchmarkResult RunBytecodeBenchmark(int iterations)
@@ -200,76 +222,67 @@ public static class OafBenchmarkRunner
 
         var program = compilation.BytecodeProgram;
         var vm = new BytecodeVirtualMachine();
-        var stopwatch = Stopwatch.StartNew();
-
-        for (var i = 0; i < iterations; i++)
+        var timings = MeasureIterations(iterations, () =>
         {
             var execution = vm.Execute(program);
             if (!execution.Success)
             {
                 throw new InvalidOperationException($"Bytecode benchmark execution failed: {execution.ErrorMessage}");
             }
-        }
+        });
 
-        stopwatch.Stop();
-        return BuildResult("bytecode_vm", "oaf", iterations, stopwatch.Elapsed);
+        return BuildResult("bytecode_vm", "oaf", iterations, timings);
     }
 
     private static OafBenchmarkResult RunCSharpLexerBaseline(int iterations)
     {
-        var stopwatch = Stopwatch.StartNew();
         var checksum = 0;
 
-        for (var i = 0; i < iterations; i++)
+        var timings = MeasureIterations(iterations, () =>
         {
             checksum ^= ScanTokensWithCSharpBaseline(LexerBenchmarkSource);
-        }
+        });
 
-        stopwatch.Stop();
         if (checksum == int.MinValue)
         {
             throw new InvalidOperationException("Unreachable checksum sentinel.");
         }
 
-        return BuildResult("lexer", "csharp", iterations, stopwatch.Elapsed);
+        return BuildResult("lexer", "csharp", iterations, timings);
     }
 
     private static OafBenchmarkResult RunCSharpCompilerBaseline(int iterations)
     {
-        var stopwatch = Stopwatch.StartNew();
         var checksum = 0L;
 
-        for (var i = 0; i < iterations; i++)
+        var timings = MeasureIterations(iterations, () =>
         {
             checksum += RunCompilerLikeCSharpWorkload(CompilerBenchmarkSource);
-        }
+        });
 
-        stopwatch.Stop();
         if (checksum == long.MinValue)
         {
             throw new InvalidOperationException("Unreachable checksum sentinel.");
         }
 
-        return BuildResult("compiler_pipeline", "csharp", iterations, stopwatch.Elapsed);
+        return BuildResult("compiler_pipeline", "csharp", iterations, timings);
     }
 
     private static OafBenchmarkResult RunCSharpBytecodeBaseline(int iterations)
     {
-        var stopwatch = Stopwatch.StartNew();
         long total = 0;
 
-        for (var i = 0; i < iterations; i++)
+        var timings = MeasureIterations(iterations, () =>
         {
             total += ExecuteBytecodeEquivalentInCSharp();
-        }
+        });
 
-        stopwatch.Stop();
         if (total == long.MinValue)
         {
             throw new InvalidOperationException("Unreachable checksum sentinel.");
         }
 
-        return BuildResult("bytecode_vm", "csharp", iterations, stopwatch.Elapsed);
+        return BuildResult("bytecode_vm", "csharp", iterations, timings);
     }
 
     private static int ScanTokensWithCSharpBaseline(string source)
@@ -337,14 +350,94 @@ public static class OafBenchmarkRunner
         return total;
     }
 
-    private static OafBenchmarkResult BuildResult(string name, string runtime, int iterations, TimeSpan elapsed)
+    private static OafBenchmarkResult BuildResult(
+        string name,
+        string runtime,
+        int iterations,
+        BenchmarkTimingSummary timing)
     {
-        var totalMs = elapsed.TotalMilliseconds;
+        return new OafBenchmarkResult(
+            name,
+            runtime,
+            iterations,
+            timing.TotalMilliseconds,
+            timing.MeanMilliseconds,
+            timing.MedianMilliseconds,
+            timing.P95Milliseconds,
+            timing.OpsPerSecond);
+    }
+
+    private static BenchmarkTimingSummary MeasureIterations(int iterations, Action body)
+    {
+        var samples = new double[iterations];
+        for (var i = 0; i < iterations; i++)
+        {
+            var start = Stopwatch.GetTimestamp();
+            body();
+            var end = Stopwatch.GetTimestamp();
+            samples[i] = (end - start) * 1000.0 / Stopwatch.Frequency;
+        }
+
+        var totalMs = samples.Sum();
         var meanMs = totalMs / iterations;
-        var opsPerSecond = elapsed.TotalSeconds > 0
-            ? iterations / elapsed.TotalSeconds
+        var sorted = samples.ToArray();
+        Array.Sort(sorted);
+        var medianMs = ComputeMedian(sorted);
+        var p95Ms = ComputePercentile(sorted, 0.95);
+        var opsPerSecond = totalMs > 0
+            ? iterations / (totalMs / 1000.0)
             : 0;
 
-        return new OafBenchmarkResult(name, runtime, iterations, totalMs, meanMs, opsPerSecond);
+        return new BenchmarkTimingSummary(totalMs, meanMs, medianMs, p95Ms, opsPerSecond);
     }
+
+    private static double ComputeRatio(OafBenchmarkResult oaf, OafBenchmarkResult csharp, BenchmarkStatistic statistic)
+    {
+        const double epsilon = 0.000001;
+        var denominator = Math.Max(GetStatistic(csharp, statistic), epsilon);
+        var numerator = GetStatistic(oaf, statistic);
+        return numerator / denominator;
+    }
+
+    private static double GetStatistic(OafBenchmarkResult result, BenchmarkStatistic statistic)
+    {
+        return statistic switch
+        {
+            BenchmarkStatistic.Median => result.MedianMilliseconds,
+            BenchmarkStatistic.P95 => result.P95Milliseconds,
+            _ => result.MeanMilliseconds
+        };
+    }
+
+    private static double ComputeMedian(double[] sortedSamples)
+    {
+        if (sortedSamples.Length == 0)
+        {
+            return 0;
+        }
+
+        var middle = sortedSamples.Length / 2;
+        return sortedSamples.Length % 2 == 0
+            ? (sortedSamples[middle - 1] + sortedSamples[middle]) / 2.0
+            : sortedSamples[middle];
+    }
+
+    private static double ComputePercentile(double[] sortedSamples, double percentile)
+    {
+        if (sortedSamples.Length == 0)
+        {
+            return 0;
+        }
+
+        var position = (int)Math.Ceiling(percentile * sortedSamples.Length) - 1;
+        var clamped = Math.Clamp(position, 0, sortedSamples.Length - 1);
+        return sortedSamples[clamped];
+    }
+
+    private readonly record struct BenchmarkTimingSummary(
+        double TotalMilliseconds,
+        double MeanMilliseconds,
+        double MedianMilliseconds,
+        double P95Milliseconds,
+        double OpsPerSecond);
 }

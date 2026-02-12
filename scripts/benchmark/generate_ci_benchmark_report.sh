@@ -49,7 +49,7 @@ run_or_dump "cross-language benchmark" "${CROSS_LANG_STDOUT}" \
   --sum-n "${SUM_N}" \
   --prime-n "${PRIME_N}" \
   --matrix-n "${MATRIX_N}" \
-  --oaf-mode both \
+  --oaf-mode all \
   --out "${CROSS_LANG_CSV}"
 
 if [[ ! -s "${CROSS_LANG_CSV}" ]]; then
@@ -96,11 +96,11 @@ dotnet run --configuration Release --no-build -- --benchmark-kernels --iteration
 $(sanitize_output "${KERNEL_OUTPUT}")
 \`\`\`
 
-## Cross-Language Benchmarks (C, Rust, Oaf VM, Oaf Native)
+## Cross-Language Benchmarks (C, Rust, Oaf VM/Native, Oaf MLIR VM/Native)
 
 Command:
 \`\`\`bash
-./scripts/benchmark/run_c_rust_benchmarks.sh --iterations ${CROSS_LANG_ITERATIONS} --sum-n ${SUM_N} --prime-n ${PRIME_N} --matrix-n ${MATRIX_N} --oaf-mode both
+./scripts/benchmark/run_c_rust_benchmarks.sh --iterations ${CROSS_LANG_ITERATIONS} --sum-n ${SUM_N} --prime-n ${PRIME_N} --matrix-n ${MATRIX_N} --oaf-mode all
 \`\`\`
 
 Raw CSV:
@@ -110,8 +110,8 @@ $(sanitize_output "${CROSS_LANG_CSV}")
 
 Relative to C baseline (mean_ms ratio):
 
-| Algorithm | Rust/C | Oaf VM/C | Oaf Native/C |
-|---|---:|---:|---:|
+| Algorithm | Rust/C | Oaf VM/C | Oaf Native/C | Oaf MLIR VM/C | Oaf MLIR Native/C |
+|---|---:|---:|---:|---:|---:|
 $(awk -F, '
 NR == 1 { next }
 {
@@ -119,17 +119,53 @@ NR == 1 { next }
   mean[$1, key] = $5 + 0.0
   alg[key] = 1
 }
+function ratio(numerator, denominator,   safe_denominator) {
+  safe_denominator = denominator
+  if (safe_denominator < 0.000001) {
+    safe_denominator = 0.000001
+  }
+  return sprintf("%.3fx", numerator / safe_denominator)
+}
 END {
   for (key in alg) {
-    c = mean["c", key]
-    if (c <= 0) {
+    if (!(("c", key) in mean)) {
       continue
     }
+    c = mean["c", key]
 
-    rust = (("rust", key) in mean) ? sprintf("%.3fx", mean["rust", key] / c) : "n/a"
-    vm = (("oaf_vm", key) in mean) ? sprintf("%.3fx", mean["oaf_vm", key] / c) : "n/a"
-    exe = (("oaf_exe", key) in mean) ? sprintf("%.3fx", mean["oaf_exe", key] / c) : "n/a"
-    printf "| %s | %s | %s | %s |\n", key, rust, vm, exe
+    rust = (("rust", key) in mean) ? ratio(mean["rust", key], c) : "n/a"
+    vm = (("oaf_vm", key) in mean) ? ratio(mean["oaf_vm", key], c) : "n/a"
+    exe = (("oaf_exe", key) in mean) ? ratio(mean["oaf_exe", key], c) : "n/a"
+    mlirVm = (("oaf_mlir_vm", key) in mean) ? ratio(mean["oaf_mlir_vm", key], c) : "n/a"
+    mlirExe = (("oaf_mlir_exe", key) in mean) ? ratio(mean["oaf_mlir_exe", key], c) : "n/a"
+    printf "| %s | %s | %s | %s | %s | %s |\n", key, rust, vm, exe, mlirVm, mlirExe
+  }
+}' "${CROSS_LANG_CSV}" | sort)
+
+Oaf mode comparison (mean_ms ratio):
+
+| Algorithm | VM/Native | MLIR VM/VM | MLIR Native/Native | MLIR VM/MLIR Native |
+|---|---:|---:|---:|---:|
+$(awk -F, '
+NR == 1 { next }
+$1 ~ /^oaf_/ {
+  mean[$1, $2] = $5 + 0.0
+  alg[$2] = 1
+}
+function ratio(numerator, denominator,   safe_denominator) {
+  safe_denominator = denominator
+  if (safe_denominator < 0.000001) {
+    safe_denominator = 0.000001
+  }
+  return sprintf("%.3fx", numerator / safe_denominator)
+}
+END {
+  for (key in alg) {
+    vm = (("oaf_vm", key) in mean && ("oaf_exe", key) in mean) ? ratio(mean["oaf_vm", key], mean["oaf_exe", key]) : "n/a"
+    mlirVm = (("oaf_mlir_vm", key) in mean && ("oaf_vm", key) in mean) ? ratio(mean["oaf_mlir_vm", key], mean["oaf_vm", key]) : "n/a"
+    mlirNative = (("oaf_mlir_exe", key) in mean && ("oaf_exe", key) in mean) ? ratio(mean["oaf_mlir_exe", key], mean["oaf_exe", key]) : "n/a"
+    mlirVmVsNative = (("oaf_mlir_vm", key) in mean && ("oaf_mlir_exe", key) in mean) ? ratio(mean["oaf_mlir_vm", key], mean["oaf_mlir_exe", key]) : "n/a"
+    printf "| %s | %s | %s | %s | %s |\n", key, vm, mlirVm, mlirNative, mlirVmVsNative
   }
 }' "${CROSS_LANG_CSV}" | sort)
 

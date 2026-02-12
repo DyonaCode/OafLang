@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Oaf.Frontend.Compiler.CodeGen.Bytecode;
 
 public sealed class BytecodeExecutionResult
@@ -20,13 +22,14 @@ public sealed class BytecodeVirtualMachine
 {
     private readonly struct DecodedFastInstruction
     {
-        public DecodedFastInstruction(BytecodeInstruction instruction)
+        public DecodedFastInstruction(BytecodeInstruction instruction, long constantRight)
         {
             OpCode = instruction.OpCode;
             A = instruction.A;
             B = instruction.B;
             C = instruction.C;
             D = instruction.D;
+            ConstantRight = constantRight;
         }
 
         public readonly BytecodeOpCode OpCode;
@@ -38,6 +41,8 @@ public sealed class BytecodeVirtualMachine
         public readonly int C;
 
         public readonly int D;
+
+        public readonly long ConstantRight;
     }
 
     private sealed class IntegerFastPathProgram
@@ -192,13 +197,21 @@ public sealed class BytecodeVirtualMachine
         }
 
         var slotCount = fastPathProgram.SlotCount;
-        var slots = new long[slotCount];
-        if (fastPathProgram.TrackDynamicReturnTyping)
+        var slots = ArrayPool<long>.Shared.Rent(slotCount);
+        Array.Clear(slots, 0, slotCount);
+        try
         {
-            return TryExecuteIntegerFastPathWithDynamicReturnTyping(fastPathProgram, slots, out result);
-        }
+            if (fastPathProgram.TrackDynamicReturnTyping)
+            {
+                return TryExecuteIntegerFastPathWithDynamicReturnTyping(fastPathProgram, slots, out result);
+            }
 
-        return TryExecuteIntegerFastPathWithStaticReturnTyping(fastPathProgram, slots, out result);
+            return TryExecuteIntegerFastPathWithStaticReturnTyping(fastPathProgram, slots, out result);
+        }
+        finally
+        {
+            ArrayPool<long>.Shared.Return(slots);
+        }
     }
 
     private static bool TryExecuteIntegerFastPathWithDynamicReturnTyping(
@@ -215,12 +228,12 @@ public sealed class BytecodeVirtualMachine
             return false;
         }
 
-        var boolSlots = new bool[slots.Length];
-        var instructions = fastPathProgram.Instructions;
-
-        var pc = 0;
+        var boolSlots = ArrayPool<bool>.Shared.Rent(slots.Length);
+        Array.Clear(boolSlots, 0, slots.Length);
         try
         {
+            var instructions = fastPathProgram.Instructions;
+            var pc = 0;
             while ((uint)pc < (uint)instructions.Length)
             {
                 ref readonly var instruction = ref instructions[pc];
@@ -288,7 +301,7 @@ public sealed class BytecodeVirtualMachine
                     {
                         var operation = (BytecodeBinaryOperator)instruction.B;
                         var left = slots[instruction.C];
-                        var right = constants[instruction.D];
+                        var right = instruction.ConstantRight;
                         switch (operation)
                         {
                             case BytecodeBinaryOperator.Add:
@@ -332,7 +345,7 @@ public sealed class BytecodeVirtualMachine
                         var value = EvaluateBinaryInt(
                             (BytecodeBinaryOperator)instruction.C,
                             slots[instruction.A],
-                            constants[instruction.B],
+                            instruction.ConstantRight,
                             out _);
                         pc = value != 0 ? instruction.D : pc + 1;
                         break;
@@ -397,6 +410,10 @@ public sealed class BytecodeVirtualMachine
         catch
         {
             return false;
+        }
+        finally
+        {
+            ArrayPool<bool>.Shared.Return(boolSlots);
         }
     }
 
@@ -470,7 +487,7 @@ public sealed class BytecodeVirtualMachine
                     {
                         var operation = (BytecodeBinaryOperator)instruction.B;
                         var left = slots[instruction.C];
-                        var right = constants[instruction.D];
+                        var right = instruction.ConstantRight;
                         slots[instruction.A] = operation switch
                         {
                             BytecodeBinaryOperator.Add => left + right,
@@ -497,7 +514,7 @@ public sealed class BytecodeVirtualMachine
                         var value = EvaluateBinaryIntValue(
                             (BytecodeBinaryOperator)instruction.C,
                             slots[instruction.A],
-                            constants[instruction.B]);
+                            instruction.ConstantRight);
                         pc = value != 0 ? instruction.D : pc + 1;
                         break;
                     }
@@ -593,11 +610,6 @@ public sealed class BytecodeVirtualMachine
         var instructionCount = function.Instructions.Count;
         var instructions = new DecodedFastInstruction[instructionCount];
 
-        for (var i = 0; i < instructionCount; i++)
-        {
-            instructions[i] = new DecodedFastInstruction(function.Instructions[i]);
-        }
-
         var hasStaticReturnType = function.ReturnTypeKind.HasValue && function.ReturnTypeKind.Value != IrTypeKind.Unknown;
         var constants = new long[function.Constants.Count];
         bool[]? constantBoolFlags = hasStaticReturnType ? null : new bool[function.Constants.Count];
@@ -608,6 +620,19 @@ public sealed class BytecodeVirtualMachine
             {
                 constantBoolFlags[i] = function.Constants[i] is bool;
             }
+        }
+
+        for (var i = 0; i < instructionCount; i++)
+        {
+            var instruction = function.Instructions[i];
+            var constantRight = instruction.OpCode switch
+            {
+                BytecodeOpCode.BinaryIntConstRight => constants[instruction.D],
+                BytecodeOpCode.JumpIfBinaryIntConstRightTrue => constants[instruction.B],
+                _ => 0L
+            };
+
+            instructions[i] = new DecodedFastInstruction(instruction, constantRight);
         }
 
         return new IntegerFastPathProgram

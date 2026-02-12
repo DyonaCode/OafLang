@@ -1,0 +1,25 @@
+flux n = 5000000;
+flux i = 1;
+flux acc = 0;
+
+loop i <= n => {
+    if (i % 2) == 0 => {
+        acc += i << 1;
+    } -> {
+        acc = acc ^ (i * 3);
+    }
+
+    if (i % 7) == 0 => {
+        acc += i >> 2;
+    } -> {
+        acc = acc ^ (i % 16);
+    }
+
+    if (i % 97) == 0 => {
+        acc += i * ((i % 13) + 1);
+    }
+
+    i += 1;
+}
+
+return acc;

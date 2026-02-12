@@ -12,6 +12,8 @@ This directory is the source of truth for implementation-facing documentation.
 
 - `guides/GettingStarted.md`
   End-user setup and first workflows.
+- `guides/ExecutionRoadmap.md`
+  Current implementation roadmap and delivery status.
 - `guides/CompilerAndToolingGuide.md`
   Compiler pipeline and tooling architecture.
 - `DevelopmentEnvironment.md`
@@ -25,6 +27,8 @@ This directory is the source of truth for implementation-facing documentation.
   Current language syntax and semantics.
 - `reference/CLIReference.md`
   All `oaf` command surfaces.
+- `reference/CompatibilityContract-v0.1.md`
+  v0.1 behavior and compatibility guarantees.
 - `reference/RuntimeAndStdlibReference.md`
   Runtime and standard library reference.
 

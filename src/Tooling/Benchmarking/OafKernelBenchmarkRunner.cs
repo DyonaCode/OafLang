@@ -28,7 +28,8 @@ public static class OafKernelBenchmarkRunner
         long sumN,
         int primeN,
         int matrixN,
-        OafKernelExecutionMode executionMode = OafKernelExecutionMode.BytecodeVm)
+        OafKernelExecutionMode executionMode = OafKernelExecutionMode.BytecodeVm,
+        CompilerCompilationTarget compilationTarget = CompilerCompilationTarget.Bytecode)
     {
         if (iterations <= 0)
         {
@@ -41,11 +42,14 @@ public static class OafKernelBenchmarkRunner
         }
 
         var driver = new CompilerDriver(enableCompilationCache: false);
-        var results = new List<OafKernelBenchmarkResult>(capacity: 3);
+        var results = new List<OafKernelBenchmarkResult>(capacity: 6);
 
-        results.Add(RunAlgorithm(driver, "sum_xor", BuildSumXorSource(sumN), iterations, executionMode));
-        results.Add(RunAlgorithm(driver, "prime_trial", BuildPrimeTrialSource(primeN), iterations, executionMode));
-        results.Add(RunAlgorithm(driver, "affine_grid", BuildAffineGridSource(matrixN), iterations, executionMode));
+        results.Add(RunAlgorithm(driver, "sum_xor", BuildSumXorSource(sumN), iterations, executionMode, compilationTarget));
+        results.Add(RunAlgorithm(driver, "prime_trial", BuildPrimeTrialSource(primeN), iterations, executionMode, compilationTarget));
+        results.Add(RunAlgorithm(driver, "affine_grid", BuildAffineGridSource(matrixN), iterations, executionMode, compilationTarget));
+        results.Add(RunAlgorithm(driver, "branch_mix", BuildBranchMixSource(sumN), iterations, executionMode, compilationTarget));
+        results.Add(RunAlgorithm(driver, "gcd_fold", BuildGcdFoldSource(primeN), iterations, executionMode, compilationTarget));
+        results.Add(RunAlgorithm(driver, "lcg_stream", BuildLcgStreamSource(sumN), iterations, executionMode, compilationTarget));
 
         return results;
     }
@@ -66,9 +70,10 @@ public static class OafKernelBenchmarkRunner
         string algorithm,
         string source,
         int iterations,
-        OafKernelExecutionMode executionMode)
+        OafKernelExecutionMode executionMode,
+        CompilerCompilationTarget compilationTarget)
     {
-        var compilation = driver.CompileSource(source);
+        var compilation = driver.CompileSource(source, compilationTarget);
         if (!compilation.Success)
         {
             var diagnostics = string.Join(Environment.NewLine, compilation.Diagnostics.Select(static d => d.ToString()));
@@ -238,6 +243,78 @@ loop row < n => {
     row += 1;
 }
 return checksum;
+""";
+    }
+
+    private static string BuildBranchMixSource(long sumN)
+    {
+        return $$"""
+flux n = {{sumN}};
+flux i = 1;
+flux acc = 0;
+loop i <= n => {
+    if (i % 2) == 0 => {
+        acc += i << 1;
+    } -> {
+        acc = acc ^ (i * 3);
+    }
+
+    if (i % 7) == 0 => {
+        acc += i >> 2;
+    } -> {
+        acc = acc ^ (i % 16);
+    }
+
+    if (i % 97) == 0 => {
+        acc += i * ((i % 13) + 1);
+    }
+
+    i += 1;
+}
+return acc;
+""";
+    }
+
+    private static string BuildGcdFoldSource(int primeN)
+    {
+        return $$"""
+flux n = {{primeN}};
+flux i = 1;
+flux checksum = 0;
+loop i <= n => {
+    flux a = (i * 37) + 17;
+    flux b = (i * 53) + 19;
+
+    loop b != 0 => {
+        flux t = a % b;
+        a = b;
+        b = t;
+    }
+
+    checksum += a * ((i % 16) + 1);
+    i += 1;
+}
+return checksum;
+""";
+    }
+
+    private static string BuildLcgStreamSource(long sumN)
+    {
+        return $$"""
+flux n = {{sumN}};
+flux i = 0;
+flux state = 123456789;
+flux checksum = 0;
+loop i < n => {
+    state = ((state * 1103515245) + 12345) % 2147483647;
+    if (state % 2) == 0 => {
+        checksum += state;
+    } -> {
+        checksum = checksum ^ state;
+    }
+    i += 1;
+}
+return checksum ^ state;
 """;
     }
 }

@@ -80,11 +80,50 @@ jobs:
           package_root="${temp_dir}/oaf-${version}"
           cli="${package_root}/bin/oaf"
 
-          while IFS= read -r -d '' example; do
-            relative="${example#${package_root}/}"
-            echo "Running packaged example: ${relative}"
-            "${cli}" run "${example}"
-          done < <(find "${package_root}/examples" -type f -name '*.oaf' -print0 | sort -z)
+          "${cli}" test "${package_root}/examples" -r vm --compilation-target bytecode
+          "${cli}" test "${package_root}/examples" -r vm --compilation-target mlir
+
+      - name: Validate scaffold workflow (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          version="${{ needs.resolve_version.outputs.version }}"
+          archive="dist/oaf-${version}.tar.gz"
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "${temp_dir}"' EXIT
+
+          tar -xzf "${archive}" -C "${temp_dir}"
+          package_root="${temp_dir}/oaf-${version}"
+          cli="${package_root}/bin/oaf"
+          project_dir="${temp_dir}/scaffold-smoke"
+
+          "${cli}" new "${project_dir}"
+          "${cli}" test "${project_dir}" -r vm --compilation-target bytecode
+          "${cli}" build "${project_dir}/main.oaf" -o "${project_dir}/.oaf/build"
+          "${cli}" publish "${project_dir}/main.oaf" -o "${project_dir}/.oaf/publish"
+
+      - name: Validate installer and version shim (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          version="${{ needs.resolve_version.outputs.version }}"
+          archive="dist/oaf-${version}.tar.gz"
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "${temp_dir}"' EXIT
+
+          tar -xzf "${archive}" -C "${temp_dir}"
+          package_root="${temp_dir}/oaf-${version}"
+          temp_home="${temp_dir}/home"
+          install_dir="${temp_dir}/bin"
+          oaf_home="${temp_dir}/oaf-home"
+          mkdir -p "${temp_home}"
+
+          HOME="${temp_home}" OAF_INSTALL_DIR="${install_dir}" OAF_HOME="${oaf_home}" \
+            "${package_root}/install.sh" "${version}"
+
+          env PATH="${install_dir}:${PATH}" HOME="${temp_home}" OAF_HOME="${oaf_home}" oaf --version
+          env PATH="${install_dir}:${PATH}" HOME="${temp_home}" OAF_HOME="${oaf_home}" oaf version
+          env PATH="${install_dir}:${PATH}" HOME="${temp_home}" OAF_HOME="${oaf_home}" oaf version "${version}"
 
       - name: Rename package archives (Unix)
         if: runner.os != 'Windows'
@@ -118,16 +157,88 @@ jobs:
             $packageRoot = Join-Path $tempDir "oaf-$version"
             $cli = Join-Path $packageRoot "bin/oaf.exe"
 
-            Get-ChildItem -Path (Join-Path $packageRoot "examples") -Recurse -Filter *.oaf |
-              Sort-Object FullName |
-              ForEach-Object {
-                $relative = $_.FullName.Substring($packageRoot.Length + 1)
-                Write-Host "Running packaged example: $relative"
-                & $cli run $_.FullName
-                if ($LASTEXITCODE -ne 0) {
-                  throw "Packaged example failed: $($_.FullName)"
-                }
-              }
+            & $cli test (Join-Path $packageRoot "examples") -r vm --compilation-target bytecode
+            if ($LASTEXITCODE -ne 0) {
+              throw "Packaged examples failed for bytecode target."
+            }
+
+            & $cli test (Join-Path $packageRoot "examples") -r vm --compilation-target mlir
+            if ($LASTEXITCODE -ne 0) {
+              throw "Packaged examples failed for MLIR target."
+            }
+          }
+          finally {
+            if (Test-Path $tempDir) {
+              Remove-Item -Path $tempDir -Recurse -Force
+            }
+          }
+
+      - name: Validate scaffold workflow (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ needs.resolve_version.outputs.version }}"
+          $archive = "dist/oaf-$version.zip"
+          $tempDir = Join-Path $env:RUNNER_TEMP ("oaf_scaffold_validate_" + [Guid]::NewGuid().ToString("N"))
+          New-Item -ItemType Directory -Path $tempDir | Out-Null
+          try {
+            Expand-Archive -Path $archive -DestinationPath $tempDir -Force
+            $packageRoot = Join-Path $tempDir "oaf-$version"
+            $cli = Join-Path $packageRoot "bin/oaf.exe"
+            $projectDir = Join-Path $tempDir "scaffold-smoke"
+
+            & $cli new $projectDir
+            if ($LASTEXITCODE -ne 0) { throw "oaf new failed." }
+
+            & $cli test $projectDir -r vm --compilation-target bytecode
+            if ($LASTEXITCODE -ne 0) { throw "oaf test failed." }
+
+            & $cli build (Join-Path $projectDir "main.oaf") -o (Join-Path $projectDir ".oaf/build")
+            if ($LASTEXITCODE -ne 0) { throw "oaf build failed." }
+
+            & $cli publish (Join-Path $projectDir "main.oaf") -o (Join-Path $projectDir ".oaf/publish")
+            if ($LASTEXITCODE -ne 0) { throw "oaf publish failed." }
+          }
+          finally {
+            if (Test-Path $tempDir) {
+              Remove-Item -Path $tempDir -Recurse -Force
+            }
+          }
+
+      - name: Validate installer and version shim (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ needs.resolve_version.outputs.version }}"
+          $archive = "dist/oaf-$version.zip"
+          $tempDir = Join-Path $env:RUNNER_TEMP ("oaf_installer_validate_" + [Guid]::NewGuid().ToString("N"))
+          New-Item -ItemType Directory -Path $tempDir | Out-Null
+          try {
+            Expand-Archive -Path $archive -DestinationPath $tempDir -Force
+            $packageRoot = Join-Path $tempDir "oaf-$version"
+            $installDir = Join-Path $tempDir "bin"
+            $oafHome = Join-Path $tempDir "oaf-home"
+            $shim = Join-Path $installDir "oaf.cmd"
+
+            & (Join-Path $packageRoot "install.ps1") -InstallDir $installDir -OafHome $oafHome -Version $version
+            if ($LASTEXITCODE -ne 0) {
+              throw "Installer failed."
+            }
+
+            & $shim --version
+            if ($LASTEXITCODE -ne 0) {
+              throw "Shim --version failed."
+            }
+
+            & $shim version
+            if ($LASTEXITCODE -ne 0) {
+              throw "Shim version listing failed."
+            }
+
+            & $shim version $version
+            if ($LASTEXITCODE -ne 0) {
+              throw "Shim version selection failed."
+            }
           }
           finally {
             if (Test-Path $tempDir) {
@@ -154,10 +265,27 @@ jobs:
           path: dist/oaf-${{ needs.resolve_version.outputs.version }}-${{ matrix.runtime_id }}.*
           if-no-files-found: error
 
+  reproducibility_check:
+    needs: resolve_version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run reproducibility check (linux-x64)
+        run: |
+          bash scripts/release/check_reproducibility.sh "${{ needs.resolve_version.outputs.version }}" linux-x64 --strict
+
   publish_release:
     needs:
       - resolve_version
       - build_artifacts
+      - reproducibility_check
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -168,6 +296,18 @@ jobs:
           pattern: release-*
           path: release-artifacts
           merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        run: |
+          set -euo pipefail
+          cd release-artifacts
+          shopt -s nullglob
+          files=(oaf-*)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No release artifacts found." >&2
+            exit 1
+          fi
+          sha256sum "${files[@]}" > SHA256SUMS.txt
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

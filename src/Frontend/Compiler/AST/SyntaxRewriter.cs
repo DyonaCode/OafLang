@@ -19,6 +19,8 @@ public abstract class SyntaxRewriter
             ReturnStatementSyntax returnStatement => RewriteReturnStatement(returnStatement),
             IfStatementSyntax ifStatement => RewriteIfStatement(ifStatement),
             LoopStatementSyntax loop => RewriteLoopStatement(loop),
+            ModuleDeclarationStatementSyntax moduleDeclaration => RewriteModuleDeclarationStatement(moduleDeclaration),
+            ImportStatementSyntax importStatement => RewriteImportStatement(importStatement),
             StructDeclarationStatementSyntax structDeclaration => RewriteStructDeclarationStatement(structDeclaration),
             ClassDeclarationStatementSyntax classDeclaration => RewriteClassDeclarationStatement(classDeclaration),
             EnumDeclarationStatementSyntax enumDeclaration => RewriteEnumDeclarationStatement(enumDeclaration),
@@ -96,6 +98,16 @@ public abstract class SyntaxRewriter
             node.IterationVariable,
             RewriteStatement(node.Body),
             node.Span);
+    }
+
+    protected virtual StatementSyntax RewriteModuleDeclarationStatement(ModuleDeclarationStatementSyntax node)
+    {
+        return new ModuleDeclarationStatementSyntax(node.ModuleName, node.Span);
+    }
+
+    protected virtual StatementSyntax RewriteImportStatement(ImportStatementSyntax node)
+    {
+        return new ImportStatementSyntax(node.ModuleName, node.Span);
     }
 
     protected virtual StatementSyntax RewriteStructDeclarationStatement(StructDeclarationStatementSyntax node)

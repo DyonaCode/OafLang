@@ -9,6 +9,7 @@ using Oaf.Tooling.Benchmarking;
 using Oaf.Tooling.Documentation;
 using Oaf.Tooling.Formatting;
 using Oaf.Tooling.PackageManagement;
+using Oaf.Tooling.Sdk;
 using Oaf.Tests;
 
 if (args.Contains("--self-test", StringComparer.Ordinal))
@@ -59,12 +60,26 @@ if (TryHandleToolingCommand(args, out var toolingExitCode))
 }
 
 var sourceArg = args[0];
-var source = File.Exists(sourceArg)
-    ? File.ReadAllText(sourceArg)
-    : sourceArg;
+if (sourceArg.StartsWith("-", StringComparison.Ordinal))
+{
+    Console.WriteLine("Missing input source. Use <file.oaf> or inline source.");
+    Environment.ExitCode = 1;
+    return;
+}
 
-var driver = new CompilerDriver();
-var result = driver.CompileSource(source);
+if (!TryResolveCompilationTargetFromArgs(args, out var directCompilationTarget, out var directCompilationTargetError))
+{
+    Console.WriteLine(directCompilationTargetError);
+    Environment.ExitCode = 1;
+    return;
+}
+
+if (!TryCompileSdkInput(sourceArg, directCompilationTarget, out var result, out var setupError))
+{
+    Console.WriteLine($"Compilation setup failed: {setupError}");
+    Environment.ExitCode = 1;
+    return;
+}
 
 PrintCompilationArtifacts(result, args);
 
@@ -103,6 +118,10 @@ static bool TryHandleSdkCommand(string[] args, out int exitCode)
             return HandleSdkBuild(args, out exitCode);
         case "publish":
             return HandleSdkPublish(args, out exitCode);
+        case "new":
+            return HandleSdkNew(args, out exitCode);
+        case "test":
+            return HandleSdkTest(args, out exitCode);
         case "version":
             return HandleSdkVersion(args, out exitCode);
         case "clean":
@@ -129,7 +148,20 @@ static bool HandleSdkRun(string[] args, out int exitCode)
         return true;
     }
 
-    var result = CompileSdkInput(options.Input!);
+    if (!TryNormalizeCompilationTarget(options.CompilationTarget, out var compilationTarget, out errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
+    if (!TryCompileSdkInput(options.Input!, compilationTarget, out var result, out errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
     PrintCompilationArtifacts(result, args);
     PrintDiagnostics(result.Diagnostics);
     if (!result.Success)
@@ -195,7 +227,20 @@ static bool HandleSdkBuild(string[] args, out int exitCode)
         return true;
     }
 
-    var result = CompileSdkInput(options.Input!);
+    if (!TryNormalizeCompilationTarget(options.CompilationTarget, out var compilationTarget, out errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
+    if (!TryCompileSdkInput(options.Input!, compilationTarget, out var result, out errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
     PrintCompilationArtifacts(result, args);
     PrintDiagnostics(result.Diagnostics);
     if (!result.Success)
@@ -263,6 +308,13 @@ static bool HandleSdkPublish(string[] args, out int exitCode)
         return true;
     }
 
+    if (!TryNormalizeCompilationTarget(options.CompilationTarget, out var compilationTarget, out errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
     if (runtimeMode != SdkRuntimeMode.Native)
     {
         Console.WriteLine("Publish currently targets native executables only. Use -r native.");
@@ -270,7 +322,13 @@ static bool HandleSdkPublish(string[] args, out int exitCode)
         return true;
     }
 
-    var result = CompileSdkInput(options.Input!);
+    if (!TryCompileSdkInput(options.Input!, compilationTarget, out var result, out errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
     PrintCompilationArtifacts(result, args);
     PrintDiagnostics(result.Diagnostics);
     if (!result.Success)
@@ -307,6 +365,116 @@ static bool HandleSdkPublish(string[] args, out int exitCode)
         exitCode = 1;
         return true;
     }
+}
+
+static bool HandleSdkNew(string[] args, out int exitCode)
+{
+    exitCode = 0;
+
+    string? targetPath = null;
+    var force = false;
+    for (var i = 1; i < args.Length; i++)
+    {
+        var token = args[i];
+        if (string.Equals(token, "--force", StringComparison.Ordinal))
+        {
+            force = true;
+            continue;
+        }
+
+        if (token.StartsWith("-", StringComparison.Ordinal))
+        {
+            Console.WriteLine($"Unknown option '{token}'.");
+            exitCode = 1;
+            return true;
+        }
+
+        if (targetPath is not null)
+        {
+            Console.WriteLine($"Unexpected argument '{token}'. Use: oaf new [path] [--force]");
+            exitCode = 1;
+            return true;
+        }
+
+        targetPath = token;
+    }
+
+    var scaffold = OafProjectScaffolder.Create(targetPath, force);
+    Console.WriteLine(scaffold.Message);
+    if (!scaffold.Success)
+    {
+        exitCode = 1;
+        return true;
+    }
+
+    foreach (var created in scaffold.CreatedPaths.OrderBy(static path => path, StringComparer.Ordinal))
+    {
+        var relative = Path.GetRelativePath(scaffold.ProjectPath, created);
+        Console.WriteLine($"created: {relative}");
+    }
+
+    return true;
+}
+
+static bool HandleSdkTest(string[] args, out int exitCode)
+{
+    exitCode = 0;
+    if (!TryParseSdkCommandOptions(args, requireInput: false, allowOutput: false, allowRuntime: true, out var options, out var errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
+    if (!TryNormalizeSdkRuntime(options.Runtime, out var runtimeMode, out errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
+    if (!TryNormalizeCompilationTarget(options.CompilationTarget, out var compilationTarget, out errorMessage))
+    {
+        Console.WriteLine(errorMessage);
+        exitCode = 1;
+        return true;
+    }
+
+    var runtime = runtimeMode == SdkRuntimeMode.Native
+        ? OafProjectTestRuntime.Native
+        : OafProjectTestRuntime.Vm;
+    var report = OafProjectTester.Run(options.Input, compilationTarget, runtime);
+
+    if (report.PackageVerificationAttempted)
+    {
+        var packageStatus = report.PackageVerificationSucceeded ? "PASS" : "FAIL";
+        Console.WriteLine($"{packageStatus} package-verify: {report.PackageVerificationMessage}");
+    }
+
+    foreach (var result in report.Results)
+    {
+        var status = result.Success ? "PASS" : "FAIL";
+        var displayPath = Path.GetFullPath(result.FilePath);
+        if (result.Success)
+        {
+            if (result.ReturnValue is null)
+            {
+                Console.WriteLine($"{status} {displayPath}");
+            }
+            else
+            {
+                Console.WriteLine($"{status} {displayPath} (return={result.ReturnValue})");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"{status} {displayPath}: {result.Message}");
+        }
+    }
+
+    Console.WriteLine($"Executed {report.TotalFiles} file(s), {report.FailedFiles} failed.");
+    exitCode = report.HasFailures ? 1 : 0;
+    return true;
 }
 
 static bool HandleSdkVersion(string[] args, out int exitCode)
@@ -410,14 +578,31 @@ static bool HandleSdkClean(string[] args, out int exitCode)
     return true;
 }
 
-static CompilationResult CompileSdkInput(string inputArg)
+static bool TryCompileSdkInput(
+    string inputArg,
+    CompilerCompilationTarget compilationTarget,
+    out CompilationResult result,
+    out string? errorMessage)
 {
-    var source = File.Exists(inputArg)
+    result = null!;
+    errorMessage = null;
+
+    var isFileInput = File.Exists(inputArg);
+    var source = isFileInput
         ? File.ReadAllText(inputArg)
         : inputArg;
+    var searchDirectory = isFileInput
+        ? Path.GetDirectoryName(Path.GetFullPath(inputArg)) ?? Directory.GetCurrentDirectory()
+        : Directory.GetCurrentDirectory();
+
+    if (!OafPackageManager.TryComposeCompilationSource(source, searchDirectory, out var composedSource, out errorMessage))
+    {
+        return false;
+    }
 
     var driver = new CompilerDriver();
-    return driver.CompileSource(source);
+    result = driver.CompileSource(composedSource, compilationTarget);
+    return true;
 }
 
 static string ResolveBuildOutputPath(string? outputOption, string inputArg, SdkRuntimeMode runtimeMode)
@@ -644,6 +829,39 @@ static bool TryNormalizeSdkRuntime(string runtimeRaw, out SdkRuntimeMode runtime
     }
 }
 
+static bool TryNormalizeCompilationTarget(string targetRaw, out CompilerCompilationTarget compilationTarget, out string? errorMessage)
+{
+    errorMessage = null;
+    var normalized = targetRaw.Trim().ToLowerInvariant();
+    switch (normalized)
+    {
+        case "bytecode":
+        case "bc":
+            compilationTarget = CompilerCompilationTarget.Bytecode;
+            return true;
+        case "mlir":
+            compilationTarget = CompilerCompilationTarget.Mlir;
+            return true;
+        default:
+            compilationTarget = CompilerCompilationTarget.Bytecode;
+            errorMessage = $"Unsupported compilation target '{targetRaw}'. Use --compilation-target bytecode or --compilation-target mlir.";
+            return false;
+    }
+}
+
+static bool TryResolveCompilationTargetFromArgs(string[] args, out CompilerCompilationTarget compilationTarget, out string? errorMessage)
+{
+    var targetRaw = TryGetOptionValue(args, "--compilation-target");
+    if (string.IsNullOrWhiteSpace(targetRaw))
+    {
+        compilationTarget = CompilerCompilationTarget.Bytecode;
+        errorMessage = null;
+        return true;
+    }
+
+    return TryNormalizeCompilationTarget(targetRaw, out compilationTarget, out errorMessage);
+}
+
 static void PrintCompilationArtifacts(CompilationResult result, string[] args)
 {
     if (args.Contains("--ast", StringComparer.Ordinal))
@@ -659,6 +877,11 @@ static void PrintCompilationArtifacts(CompilationResult result, string[] args)
     if (args.Contains("--bytecode", StringComparer.Ordinal))
     {
         Console.WriteLine(BytecodePrinter.Print(result.BytecodeProgram));
+    }
+
+    if (args.Contains("--mlir", StringComparer.Ordinal))
+    {
+        Console.WriteLine(MlirPrinter.Print(result.IrModule));
     }
 }
 
@@ -727,6 +950,18 @@ static bool TryParseSdkCommandOptions(
             continue;
         }
 
+        if (token == "--compilation-target")
+        {
+            if (i + 1 >= args.Length)
+            {
+                errorMessage = "Missing value for --compilation-target.";
+                return false;
+            }
+
+            options.CompilationTarget = args[++i];
+            continue;
+        }
+
         if (token == "--ast")
         {
             options.ShowAst = true;
@@ -742,6 +977,12 @@ static bool TryParseSdkCommandOptions(
         if (token == "--bytecode")
         {
             options.ShowBytecode = true;
+            continue;
+        }
+
+        if (token == "--mlir")
+        {
+            options.ShowMlir = true;
             continue;
         }
 
@@ -787,21 +1028,28 @@ static void PrintUsage()
     Console.WriteLine("  oaf                           (runs ./main.oaf when present)");
     Console.WriteLine("  oaf --version");
     Console.WriteLine("  oaf version [<version>]");
-    Console.WriteLine("  oaf run <file-or-source> [-r vm|native] [--ast] [--ir] [--bytecode]");
-    Console.WriteLine("  oaf build <file-or-source> [-o <output-path>] [-r vm|native] [--ast] [--ir] [--bytecode]");
-    Console.WriteLine("  oaf publish <file-or-source> [-o <output-path>] [-r native] [--ast] [--ir] [--bytecode]");
+    Console.WriteLine("  oaf new [path] [--force]");
+    Console.WriteLine("  oaf test [path] [-r vm|native] [--compilation-target bytecode|mlir]");
+    Console.WriteLine("  oaf run <file-or-source> [-r vm|native] [--compilation-target bytecode|mlir] [--ast] [--ir] [--bytecode] [--mlir]");
+    Console.WriteLine("  oaf build <file-or-source> [-o <output-path>] [-r vm|native] [--compilation-target bytecode|mlir] [--ast] [--ir] [--bytecode] [--mlir]");
+    Console.WriteLine("  oaf publish <file-or-source> [-o <output-path>] [-r native] [--compilation-target bytecode|mlir] [--ast] [--ir] [--bytecode]");
     Console.WriteLine("  oaf clean [-o <path>]");
     Console.WriteLine("  oaf --self-test");
     Console.WriteLine("  oaf --pkg-init [manifestPath]");
     Console.WriteLine("  oaf --pkg-add <name@version> [manifestPath]");
     Console.WriteLine("  oaf --pkg-remove <name> [manifestPath]");
     Console.WriteLine("  oaf --pkg-install [manifestPath]");
+    Console.WriteLine("  oaf --pkg-verify [manifestPath]");
+    Console.WriteLine("  oaf add [package] <name@version> [manifestPath]");
+    Console.WriteLine("  oaf remove [package] <name> [manifestPath]");
+    Console.WriteLine("  oaf restore [manifestPath]");
+    Console.WriteLine("  oaf verify [manifestPath]");
     Console.WriteLine("  oaf --gen-docs <file-or-directory> [--out <outputPath>]");
     Console.WriteLine("  oaf --format <file-or-source> [--check] [--write]");
-    Console.WriteLine("  oaf --benchmark [iterations] [--max-mean-ratio <value>] [--fail-on-regression]");
-    Console.WriteLine("  oaf --benchmark-kernels [--iterations <n>] [--sum-n <n>] [--prime-n <n>] [--matrix-n <n>] [--native|--tiered]");
-    Console.WriteLine("  oaf \"source code\" [--ast] [--ir] [--bytecode] [--run-bytecode]");
-    Console.WriteLine("  oaf /path/to/file.oaf [--ast] [--ir] [--bytecode] [--run-bytecode]");
+    Console.WriteLine("  oaf --benchmark [iterations] [--comparison-statistic mean|median|p95] [--max-ratio <value>] [--max-ratio-for <benchmark>=<value>] [--fail-on-regression]");
+    Console.WriteLine("  oaf --benchmark-kernels [--iterations <n>] [--sum-n <n>] [--prime-n <n>] [--matrix-n <n>] [--native|--tiered] [--compilation-target bytecode|mlir]");
+    Console.WriteLine("  oaf \"source code\" [--compilation-target bytecode|mlir] [--ast] [--ir] [--bytecode] [--mlir] [--run-bytecode]");
+    Console.WriteLine("  oaf /path/to/file.oaf [--compilation-target bytecode|mlir] [--ast] [--ir] [--bytecode] [--mlir] [--run-bytecode]");
 }
 
 static bool TryHandleToolingCommand(string[] args, out int exitCode)
@@ -812,6 +1060,7 @@ static bool TryHandleToolingCommand(string[] args, out int exitCode)
         return false;
     }
 
+    args = NormalizePackageCommandAliases(args);
     var command = args[0];
     switch (command)
     {
@@ -860,6 +1109,15 @@ static bool TryHandleToolingCommand(string[] args, out int exitCode)
         {
             var manifestPath = args.Length > 1 ? args[1] : OafPackageManager.DefaultManifestFileName;
             var success = OafPackageManager.Install(manifestPath, out var message);
+            Console.WriteLine(message);
+            exitCode = success ? 0 : 1;
+            return true;
+        }
+
+        case "--pkg-verify":
+        {
+            var manifestPath = args.Length > 1 ? args[1] : OafPackageManager.DefaultManifestFileName;
+            var success = OafPackageManager.VerifyInstall(manifestPath, out var message);
             Console.WriteLine(message);
             exitCode = success ? 0 : 1;
             return true;
@@ -946,31 +1204,61 @@ static bool TryHandleToolingCommand(string[] args, out int exitCode)
                 return true;
             }
 
-            var maxAllowedMeanRatio = OafBenchmarkRunner.DefaultMaxAllowedMeanRatio;
-            var maxMeanRatioValue = TryGetOptionValue(args, "--max-mean-ratio");
-            if (maxMeanRatioValue is not null &&
-                !double.TryParse(maxMeanRatioValue, NumberStyles.Float, CultureInfo.InvariantCulture, out maxAllowedMeanRatio))
+            var comparisonStatistic = BenchmarkStatistic.Mean;
+            var comparisonStatisticRaw = TryGetOptionValue(args, "--comparison-statistic");
+            if (comparisonStatisticRaw is not null && !TryParseBenchmarkStatistic(comparisonStatisticRaw, out comparisonStatistic))
             {
-                Console.WriteLine($"Invalid max mean ratio '{maxMeanRatioValue}'.");
+                Console.WriteLine($"Invalid comparison statistic '{comparisonStatisticRaw}'. Use mean, median, or p95.");
                 exitCode = 1;
                 return true;
             }
 
-            if (maxAllowedMeanRatio <= 0)
+            var maxRatioValue = TryGetOptionValue(args, "--max-ratio");
+            var maxMeanRatioValue = TryGetOptionValue(args, "--max-mean-ratio");
+            if (maxRatioValue is not null && maxMeanRatioValue is not null)
             {
-                Console.WriteLine("Max mean ratio must be greater than zero.");
+                Console.WriteLine("Use either --max-ratio or --max-mean-ratio, not both.");
+                exitCode = 1;
+                return true;
+            }
+
+            var maxAllowedRatio = OafBenchmarkRunner.DefaultMaxAllowedMeanRatio;
+            var selectedRatioValue = maxRatioValue ?? maxMeanRatioValue;
+            if (selectedRatioValue is not null &&
+                !double.TryParse(selectedRatioValue, NumberStyles.Float, CultureInfo.InvariantCulture, out maxAllowedRatio))
+            {
+                var optionName = maxRatioValue is not null ? "--max-ratio" : "--max-mean-ratio";
+                Console.WriteLine($"Invalid value '{selectedRatioValue}' for {optionName}.");
+                exitCode = 1;
+                return true;
+            }
+
+            if (maxAllowedRatio <= 0)
+            {
+                Console.WriteLine("Max ratio must be greater than zero.");
+                exitCode = 1;
+                return true;
+            }
+
+            if (!TryParsePerBenchmarkRatioOverrides(args, out var perBenchmarkRatios, out var perBenchmarkRatioError))
+            {
+                Console.WriteLine(perBenchmarkRatioError);
                 exitCode = 1;
                 return true;
             }
 
             var results = OafBenchmarkRunner.RunAll(iterations);
-            OafBenchmarkRunner.PrintReport(Console.Out, results);
-            var regressions = OafBenchmarkRunner.AnalyzeAgainstBaselines(results, maxAllowedMeanRatio);
+            OafBenchmarkRunner.PrintReport(Console.Out, results, comparisonStatistic);
+            var regressions = OafBenchmarkRunner.AnalyzeAgainstBaselines(
+                results,
+                maxAllowedRatio,
+                comparisonStatistic,
+                perBenchmarkRatios);
             OafBenchmarkRunner.PrintRegressionReport(Console.Out, regressions);
 
             if (args.Contains("--fail-on-regression", StringComparer.Ordinal) && regressions.Count > 0)
             {
-                Console.WriteLine("Benchmark regression gate failed.");
+                Console.WriteLine($"Benchmark regression gate failed using {comparisonStatistic.ToString().ToLowerInvariant()}.");
                 exitCode = 1;
                 return true;
             }
@@ -1024,6 +1312,14 @@ static bool TryHandleToolingCommand(string[] args, out int exitCode)
                 return true;
             }
 
+            var compilationTargetRaw = TryGetOptionValue(args, "--compilation-target");
+            if (!TryNormalizeCompilationTarget(compilationTargetRaw ?? "bytecode", out var compilationTarget, out var compilationTargetError))
+            {
+                Console.WriteLine(compilationTargetError);
+                exitCode = 1;
+                return true;
+            }
+
             var executionMode = args.Contains("--native", StringComparer.Ordinal)
                 ? OafKernelExecutionMode.NativeBinary
                 : args.Contains("--tiered", StringComparer.Ordinal)
@@ -1037,7 +1333,7 @@ static bool TryHandleToolingCommand(string[] args, out int exitCode)
                 return true;
             }
 
-            var results = OafKernelBenchmarkRunner.Run(iterations, sumN, primeN, matrixN, executionMode);
+            var results = OafKernelBenchmarkRunner.Run(iterations, sumN, primeN, matrixN, executionMode, compilationTarget);
             OafKernelBenchmarkRunner.PrintCsv(Console.Out, results);
             exitCode = 0;
             return true;
@@ -1046,6 +1342,54 @@ static bool TryHandleToolingCommand(string[] args, out int exitCode)
         default:
             return false;
     }
+}
+
+static string[] NormalizePackageCommandAliases(string[] args)
+{
+    if (args.Length == 0)
+    {
+        return args;
+    }
+
+    var command = args[0];
+    switch (command)
+    {
+        case "add":
+            return BuildPackageAliasArgs("--pkg-add", args, supportsOptionalPackageKeyword: true);
+        case "remove":
+            return BuildPackageAliasArgs("--pkg-remove", args, supportsOptionalPackageKeyword: true);
+        case "restore":
+            return BuildPackageAliasArgs("--pkg-install", args, supportsOptionalPackageKeyword: false);
+        case "verify":
+            return BuildPackageAliasArgs("--pkg-verify", args, supportsOptionalPackageKeyword: false);
+        default:
+            return args;
+    }
+}
+
+static string[] BuildPackageAliasArgs(string targetCommand, string[] args, bool supportsOptionalPackageKeyword)
+{
+    if (args.Length == 1)
+    {
+        return [targetCommand];
+    }
+
+    var argumentStart = 1;
+    if (supportsOptionalPackageKeyword && string.Equals(args[1], "package", StringComparison.Ordinal))
+    {
+        argumentStart = 2;
+    }
+
+    var extraArguments = args.Length - argumentStart;
+    var mappedArgs = new string[Math.Max(extraArguments + 1, 1)];
+    mappedArgs[0] = targetCommand;
+    if (extraArguments <= 0)
+    {
+        return mappedArgs;
+    }
+
+    Array.Copy(args, argumentStart, mappedArgs, 1, extraArguments);
+    return mappedArgs;
 }
 
 static string? TryGetOptionValue(string[] args, string optionName)
@@ -1059,6 +1403,83 @@ static string? TryGetOptionValue(string[] args, string optionName)
     }
 
     return null;
+}
+
+static bool TryParseBenchmarkStatistic(string value, out BenchmarkStatistic statistic)
+{
+    statistic = value.ToLowerInvariant() switch
+    {
+        "mean" => BenchmarkStatistic.Mean,
+        "median" => BenchmarkStatistic.Median,
+        "p95" => BenchmarkStatistic.P95,
+        _ => BenchmarkStatistic.Mean
+    };
+
+    return value.Equals("mean", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("median", StringComparison.OrdinalIgnoreCase)
+        || value.Equals("p95", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool TryParsePerBenchmarkRatioOverrides(
+    string[] args,
+    out IReadOnlyDictionary<string, double>? overrides,
+    out string? error)
+{
+    var values = GetOptionValues(args, "--max-ratio-for");
+    if (values.Count == 0)
+    {
+        overrides = null;
+        error = null;
+        return true;
+    }
+
+    var parsed = new Dictionary<string, double>(StringComparer.Ordinal);
+    foreach (var value in values)
+    {
+        var separatorIndex = value.IndexOf('=', StringComparison.Ordinal);
+        if (separatorIndex <= 0 || separatorIndex == value.Length - 1)
+        {
+            overrides = null;
+            error = $"Invalid --max-ratio-for value '{value}'. Expected <benchmark>=<value>.";
+            return false;
+        }
+
+        var benchmark = value[..separatorIndex].Trim();
+        var thresholdText = value[(separatorIndex + 1)..].Trim();
+        if (benchmark.Length == 0)
+        {
+            overrides = null;
+            error = $"Invalid --max-ratio-for value '{value}'. Benchmark name cannot be empty.";
+            return false;
+        }
+
+        if (!double.TryParse(thresholdText, NumberStyles.Float, CultureInfo.InvariantCulture, out var threshold) || threshold <= 0)
+        {
+            overrides = null;
+            error = $"Invalid --max-ratio-for value '{value}'. Threshold must be a positive number.";
+            return false;
+        }
+
+        parsed[benchmark] = threshold;
+    }
+
+    overrides = parsed;
+    error = null;
+    return true;
+}
+
+static IReadOnlyList<string> GetOptionValues(string[] args, string optionName)
+{
+    var values = new List<string>();
+    for (var i = 0; i < args.Length - 1; i++)
+    {
+        if (string.Equals(args[i], optionName, StringComparison.Ordinal))
+        {
+            values.Add(args[i + 1]);
+        }
+    }
+
+    return values;
 }
 
 enum SdkRuntimeMode
@@ -1077,9 +1498,13 @@ sealed class SdkCommandOptions
 
     public bool RuntimeProvided { get; set; }
 
+    public string CompilationTarget { get; set; } = "bytecode";
+
     public bool ShowAst { get; set; }
 
     public bool ShowIr { get; set; }
 
     public bool ShowBytecode { get; set; }
+
+    public bool ShowMlir { get; set; }
 }
