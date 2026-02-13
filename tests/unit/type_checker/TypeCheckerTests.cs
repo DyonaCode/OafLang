@@ -30,6 +30,11 @@ public static class TypeCheckerTests
             ("supports_jot_statement", SupportsJotStatement),
             ("supports_array_literals_and_indexing", SupportsArrayLiteralsAndIndexing),
             ("rejects_non_integer_array_index", RejectsNonIntegerArrayIndex),
+            ("supports_counted_paralloop_with_indexed_writes", SupportsCountedParalloopWithIndexedWrites),
+            ("supports_counted_paralloop_plus_equals_reduction", SupportsCountedParalloopPlusEqualsReduction),
+            ("rejects_counted_paralloop_non_reduction_assignment", RejectsCountedParalloopNonReductionAssignment),
+            ("rejects_counted_paralloop_self_referencing_reduction", RejectsCountedParalloopSelfReferencingReduction),
+            ("rejects_counted_paralloop_break_statement", RejectsCountedParalloopBreakStatement),
             ("reports_break_outside_loop_with_location", ReportsBreakOutsideLoopWithLocation),
             ("allows_break_and_continue_inside_loop", AllowsBreakAndContinueInsideLoop)
         ];
@@ -180,6 +185,41 @@ public static class TypeCheckerTests
         const string source = "flux values = [1, 2, 3]; flux i = 1.5; return values[i];";
         var diagnostics = CompileAndTypeCheck(source);
         TestAssertions.True(diagnostics.HasErrors, "Expected non-integer index to fail.");
+    }
+
+    private static void SupportsCountedParalloopWithIndexedWrites()
+    {
+        const string source = "flux values = [0, 0, 0, 0]; paralloop 4, i => values[i] = i + 1; return values[3];";
+        var diagnostics = CompileAndTypeCheck(source);
+        TestAssertions.False(diagnostics.HasErrors, "Expected counted paralloop indexed writes to type-check.");
+    }
+
+    private static void SupportsCountedParalloopPlusEqualsReduction()
+    {
+        const string source = "flux total = 0; paralloop 4, i => total += i; return total;";
+        var diagnostics = CompileAndTypeCheck(source);
+        TestAssertions.False(diagnostics.HasErrors, "Expected counted paralloop to allow '+=' integer reduction.");
+    }
+
+    private static void RejectsCountedParalloopNonReductionAssignment()
+    {
+        const string source = "flux total = 0; paralloop 4, i => total = total + i; return total;";
+        var diagnostics = CompileAndTypeCheck(source);
+        TestAssertions.True(diagnostics.HasErrors, "Expected counted paralloop to reject outer scalar assignment.");
+    }
+
+    private static void RejectsCountedParalloopSelfReferencingReduction()
+    {
+        const string source = "flux total = 0; paralloop 4, i => total += total + i; return total;";
+        var diagnostics = CompileAndTypeCheck(source);
+        TestAssertions.True(diagnostics.HasErrors, "Expected counted paralloop to reject self-referencing '+=' reduction expression.");
+    }
+
+    private static void RejectsCountedParalloopBreakStatement()
+    {
+        const string source = "paralloop 4, i => { if i == 2 => break; } return 0;";
+        var diagnostics = CompileAndTypeCheck(source);
+        TestAssertions.True(diagnostics.HasErrors, "Expected counted paralloop to reject break.");
     }
 
     private static void ReportsBreakOutsideLoopWithLocation()

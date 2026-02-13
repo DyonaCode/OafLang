@@ -60,6 +60,9 @@ public static class BytecodePrinter
             BytecodeOpCode.Jump => $"jump {instruction.A}",
             BytecodeOpCode.JumpIfTrue => $"jump_if_true s{instruction.A}, {instruction.B}",
             BytecodeOpCode.JumpIfFalse => $"jump_if_false s{instruction.A}, {instruction.B}",
+            BytecodeOpCode.ParallelForBegin => $"parallel_for_begin count=s{instruction.A}, iter=s{instruction.B}, end={instruction.C}",
+            BytecodeOpCode.ParallelForEnd => "parallel_for_end",
+            BytecodeOpCode.ParallelReduceAdd => $"parallel_reduce_add s{instruction.A}, s{instruction.B}",
             BytecodeOpCode.Return => instruction.A < 0 ? "return" : $"return s{instruction.A}",
             _ => instruction.OpCode.ToString().ToLowerInvariant()
         };

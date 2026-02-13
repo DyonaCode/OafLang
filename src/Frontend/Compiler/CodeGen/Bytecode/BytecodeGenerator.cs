@@ -21,6 +21,8 @@ public sealed class BytecodeGenerator
 
         public List<LabelFixup> Fixups { get; } = new();
 
+        public Stack<int> ParallelForBeginStack { get; } = new();
+
         public int NextSlot { get; set; }
     }
 
@@ -242,6 +244,38 @@ public sealed class BytecodeGenerator
                     break;
                 }
 
+            case IrParallelForBeginInstruction parallelBegin:
+                {
+                    var count = MaterializeOperand(parallelBegin.Count, context);
+                    var iterationSlot = GetSlot(parallelBegin.IterationVariable, context);
+                    var beginIndex = context.Function.Instructions.Count;
+                    context.Function.Instructions.Add(new BytecodeInstruction(BytecodeOpCode.ParallelForBegin, count, iterationSlot, -1));
+                    context.ParallelForBeginStack.Push(beginIndex);
+                    break;
+                }
+
+            case IrParallelForEndInstruction:
+                {
+                    var endIndex = context.Function.Instructions.Count;
+                    context.Function.Instructions.Add(new BytecodeInstruction(BytecodeOpCode.ParallelForEnd));
+
+                    if (context.ParallelForBeginStack.Count > 0)
+                    {
+                        var beginIndex = context.ParallelForBeginStack.Pop();
+                        context.Function.Instructions[beginIndex].C = endIndex;
+                    }
+
+                    break;
+                }
+
+            case IrParallelReduceAddInstruction parallelReduceAdd:
+                {
+                    var target = GetSlot(parallelReduceAdd.Target, context);
+                    var value = MaterializeOperand(parallelReduceAdd.Value, context);
+                    context.Function.Instructions.Add(new BytecodeInstruction(BytecodeOpCode.ParallelReduceAdd, target, value));
+                    break;
+                }
+
             case IrBranchInstruction branch:
                 {
                     var condition = MaterializeOperand(branch.Condition, context);
@@ -306,6 +340,12 @@ public sealed class BytecodeGenerator
                     instruction.D = target;
                     break;
             }
+        }
+
+        while (context.ParallelForBeginStack.Count > 0)
+        {
+            var beginIndex = context.ParallelForBeginStack.Pop();
+            context.Function.Instructions[beginIndex].C = context.Function.Instructions.Count;
         }
     }
 
@@ -425,6 +465,10 @@ public sealed class BytecodeGenerator
                 case BytecodeOpCode.JumpIfBinaryIntConstRightTrue:
                     instruction.D = RemapJumpTarget(instruction.D, oldToNewIndex, oldCount, newInstructions.Count);
                     break;
+
+                case BytecodeOpCode.ParallelForBegin:
+                    instruction.C = RemapJumpTarget(instruction.C, oldToNewIndex, oldCount, newInstructions.Count);
+                    break;
             }
         }
 
@@ -498,6 +542,8 @@ public sealed class BytecodeGenerator
             BytecodeOpCode.ArrayCreate => instruction.B == slot,
             BytecodeOpCode.ArrayGet => instruction.B == slot || instruction.C == slot,
             BytecodeOpCode.ArraySet => instruction.A == slot || instruction.B == slot || instruction.C == slot,
+            BytecodeOpCode.ParallelForBegin => instruction.A == slot,
+            BytecodeOpCode.ParallelReduceAdd => instruction.A == slot || instruction.B == slot,
             BytecodeOpCode.JumpIfTrue or BytecodeOpCode.JumpIfFalse => instruction.A == slot,
             BytecodeOpCode.JumpIfBinaryIntTrue => instruction.A == slot || instruction.B == slot,
             BytecodeOpCode.JumpIfBinaryIntConstRightTrue => instruction.A == slot,

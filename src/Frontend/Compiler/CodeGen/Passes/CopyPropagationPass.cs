@@ -34,6 +34,14 @@ public sealed class CopyPropagationPass : IIrOptimizationPass
 
                         break;
 
+                    case IrParallelForBeginInstruction:
+                    case IrParallelForEndInstruction:
+                    case IrParallelReduceAddInstruction:
+                        // Parallel regions can observe or mutate shared variables.
+                        temporaryCopies.Clear();
+                        variableCopies.Clear();
+                        break;
+
                     default:
                     {
                         var written = instruction.WrittenTemporaryName;
@@ -196,6 +204,28 @@ public sealed class CopyPropagationPass : IIrOptimizationPass
                 if (TryResolveValue(arraySet.Value, temporaryCopies, variableCopies, out var setValue))
                 {
                     arraySet.Value = setValue;
+                    changed = true;
+                }
+
+                break;
+            }
+
+            case IrParallelForBeginInstruction parallelBegin:
+            {
+                if (TryResolveValue(parallelBegin.Count, temporaryCopies, variableCopies, out var resolvedCount))
+                {
+                    parallelBegin.Count = resolvedCount;
+                    changed = true;
+                }
+
+                break;
+            }
+
+            case IrParallelReduceAddInstruction parallelReduceAdd:
+            {
+                if (TryResolveValue(parallelReduceAdd.Value, temporaryCopies, variableCopies, out var resolvedValue))
+                {
+                    parallelReduceAdd.Value = resolvedValue;
                     changed = true;
                 }
 

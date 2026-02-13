@@ -21,6 +21,8 @@ public static class BytecodeTests
             ("executes_module_scoped_field_access", ExecutesModuleScopedFieldAccess),
             ("executes_match_statement", ExecutesMatchStatement),
             ("executes_gc_statement", ExecutesGcStatement),
+            ("executes_counted_paralloop_with_indexed_writes", ExecutesCountedParalloopWithIndexedWrites),
+            ("executes_counted_paralloop_plus_equals_reduction", ExecutesCountedParalloopPlusEqualsReduction),
             ("throw_statement_returns_failed_execution", ThrowStatementReturnsFailedExecution),
             ("executes_explicit_cast_with_truncation", ExecutesExplicitCastWithTruncation),
             ("executes_jot_statement_with_console_output", ExecutesJotStatementWithConsoleOutput),
@@ -153,6 +155,51 @@ public static class BytecodeTests
 
         TestAssertions.True(execution.Success, execution.ErrorMessage);
         TestAssertions.Equal(5L, execution.ReturnValue as long? ?? Convert.ToInt64(execution.ReturnValue));
+    }
+
+    private static void ExecutesCountedParalloopWithIndexedWrites()
+    {
+        const string source = """
+            flux values = [0, 0, 0, 0, 0, 0, 0, 0];
+            paralloop 8, i => {
+                values[i] = (i + 1) * (i + 1);
+            }
+
+            flux idx = 0;
+            flux sum = 0;
+            loop idx < 8 => {
+                sum += values[idx];
+                idx += 1;
+            }
+
+            return sum;
+            """;
+        var result = Compile(source);
+
+        var vm = new BytecodeVirtualMachine();
+        var execution = vm.Execute(result.BytecodeProgram);
+
+        TestAssertions.True(execution.Success, execution.ErrorMessage);
+        TestAssertions.Equal(204L, execution.ReturnValue as long? ?? Convert.ToInt64(execution.ReturnValue));
+    }
+
+    private static void ExecutesCountedParalloopPlusEqualsReduction()
+    {
+        const string source = """
+            flux total = 0;
+            paralloop 8, i => {
+                total += i + 1;
+            }
+
+            return total;
+            """;
+        var result = Compile(source);
+
+        var vm = new BytecodeVirtualMachine();
+        var execution = vm.Execute(result.BytecodeProgram);
+
+        TestAssertions.True(execution.Success, execution.ErrorMessage);
+        TestAssertions.Equal(36L, execution.ReturnValue as long? ?? Convert.ToInt64(execution.ReturnValue));
     }
 
     private static void ThrowStatementReturnsFailedExecution()

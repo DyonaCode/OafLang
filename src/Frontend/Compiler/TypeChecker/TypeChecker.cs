@@ -15,11 +15,25 @@ public sealed class TypeChecker
         ExplicitNumeric
     }
 
+    private sealed class ParallelLoopContext
+    {
+        public ParallelLoopContext(int scopeDepth, string iterationVariableName)
+        {
+            ScopeDepth = scopeDepth;
+            IterationVariableName = iterationVariableName;
+        }
+
+        public int ScopeDepth { get; }
+
+        public string IterationVariableName { get; }
+    }
+
     private readonly DiagnosticBag _diagnostics;
     private readonly Dictionary<string, UserDefinedTypeSymbol> _userDefinedTypes = new(StringComparer.Ordinal);
     private readonly HashSet<string> _importedModules = new(StringComparer.Ordinal);
     private string? _currentModule;
     private int _loopDepth;
+    private readonly Stack<ParallelLoopContext> _parallelLoopContexts = new();
 
     public TypeChecker(DiagnosticBag diagnostics)
     {
@@ -32,6 +46,7 @@ public sealed class TypeChecker
     {
         _currentModule = null;
         _importedModules.Clear();
+        _parallelLoopContexts.Clear();
 
         CollectTypeDeclarations(compilationUnit);
         ValidateTypeDeclarations(compilationUnit);
@@ -313,6 +328,11 @@ public sealed class TypeChecker
                 break;
 
             case ThrowStatementSyntax throwStatement:
+                if (IsInsideParallelLoopBody())
+                {
+                    ReportTypeError("'throw' is not supported inside counted paralloop bodies.", throwStatement);
+                }
+
                 if (throwStatement.ErrorExpression is not null)
                 {
                     _ = CheckExpression(throwStatement.ErrorExpression);
@@ -330,6 +350,11 @@ public sealed class TypeChecker
                 break;
 
             case ReturnStatementSyntax returnStatement:
+                if (IsInsideParallelLoopBody())
+                {
+                    ReportTypeError("'return' is not supported inside counted paralloop bodies.", returnStatement);
+                }
+
                 if (returnStatement.Expression is not null)
                 {
                     CheckExpression(returnStatement.Expression);
@@ -353,8 +378,22 @@ public sealed class TypeChecker
                 break;
 
             case LoopStatementSyntax loopStatement:
+                if (IsInsideParallelLoopBody() && loopStatement.IsParallel)
+                {
+                    ReportTypeError("Nested counted paralloops are not currently supported.", loopStatement);
+                }
+
                 var loopExpressionType = CheckExpression(loopStatement.IteratorOrCondition);
-                if (!AreSameType(loopExpressionType, PrimitiveTypeSymbol.Int)
+                var isCountedParallelLoop = loopStatement.IsParallel && !string.IsNullOrWhiteSpace(loopStatement.IterationVariable);
+                if (isCountedParallelLoop)
+                {
+                    if (!AreSameType(loopExpressionType, PrimitiveTypeSymbol.Int)
+                        && !AreSameType(loopExpressionType, PrimitiveTypeSymbol.Error))
+                    {
+                        ReportTypeError("Counted paralloop requires an integer iteration count expression.", loopStatement.IteratorOrCondition);
+                    }
+                }
+                else if (!AreSameType(loopExpressionType, PrimitiveTypeSymbol.Int)
                     && !AreSameType(loopExpressionType, PrimitiveTypeSymbol.Bool)
                     && !AreSameType(loopExpressionType, PrimitiveTypeSymbol.Error))
                 {
@@ -362,16 +401,34 @@ public sealed class TypeChecker
                 }
 
                 Symbols.EnterScope();
-                _loopDepth++;
+                if (!isCountedParallelLoop)
+                {
+                    _loopDepth++;
+                }
 
+                var enteredParallelContext = false;
                 if (!string.IsNullOrWhiteSpace(loopStatement.IterationVariable))
                 {
-                    Symbols.TryDeclare(new VariableSymbol(loopStatement.IterationVariable, PrimitiveTypeSymbol.Int, isMutable: false));
+                    var iterationSymbol = new VariableSymbol(loopStatement.IterationVariable, PrimitiveTypeSymbol.Int, isMutable: false);
+                    Symbols.TryDeclare(iterationSymbol);
+                    if (isCountedParallelLoop)
+                    {
+                        _parallelLoopContexts.Push(new ParallelLoopContext(Symbols.ScopeDepth, iterationSymbol.Name));
+                        enteredParallelContext = true;
+                    }
                 }
 
                 CheckStatement(loopStatement.Body);
 
-                _loopDepth--;
+                if (enteredParallelContext)
+                {
+                    _parallelLoopContexts.Pop();
+                }
+
+                if (!isCountedParallelLoop)
+                {
+                    _loopDepth--;
+                }
                 Symbols.ExitScope();
                 break;
 
@@ -392,6 +449,11 @@ public sealed class TypeChecker
                 break;
 
             case JotStatementSyntax jotStatement:
+                if (IsInsideParallelLoopBody())
+                {
+                    ReportTypeError("'Jot' is not supported inside counted paralloop bodies.", jotStatement);
+                }
+
                 _ = CheckExpression(jotStatement.Expression);
                 break;
 
@@ -450,9 +512,57 @@ public sealed class TypeChecker
 
     private void CheckAssignment(AssignmentStatementSyntax assignment)
     {
-        if (!TryLookupVariableSymbol(assignment.Identifier, out var symbol))
+        if (!TryLookupVariableSymbolWithScopeDepth(assignment.Identifier, out var symbol, out var scopeDepth))
         {
             ReportTypeError($"Variable '{assignment.Identifier}' is not declared.", assignment);
+            return;
+        }
+
+        var isOuterParallelAssignment = TryGetCurrentParallelLoopContext(out var parallelContext)
+            && scopeDepth > 0
+            && scopeDepth < parallelContext.ScopeDepth;
+
+        if (isOuterParallelAssignment)
+        {
+            if (!symbol.IsMutable)
+            {
+                ReportTypeError($"Variable '{assignment.Identifier}' is immutable and cannot be assigned.", assignment);
+                _ = CheckExpression(assignment.Expression);
+                return;
+            }
+
+            var reductionExpressionType = CheckExpression(assignment.Expression);
+            if (assignment.OperatorKind != TokenKind.PlusEqualsToken)
+            {
+                ReportTypeError(
+                    $"Counted paralloop only supports outer variable reductions using '+=' for '{assignment.Identifier}'.",
+                    assignment);
+                return;
+            }
+
+            if (!AreSameType(symbol.Type, PrimitiveTypeSymbol.Int)
+                && !AreSameType(symbol.Type, PrimitiveTypeSymbol.Error))
+            {
+                ReportTypeError(
+                    $"Counted paralloop '+=' reduction currently requires int target variable '{assignment.Identifier}'.",
+                    assignment);
+            }
+
+            if (!IsIntegerLike(reductionExpressionType)
+                && !AreSameType(reductionExpressionType, PrimitiveTypeSymbol.Error))
+            {
+                ReportTypeError(
+                    $"Counted paralloop '+=' reduction for '{assignment.Identifier}' requires integer contribution expression.",
+                    assignment.Expression);
+            }
+
+            if (ContainsNameReference(assignment.Expression, assignment.Identifier))
+            {
+                ReportTypeError(
+                    $"Counted paralloop '+=' reduction expression for '{assignment.Identifier}' cannot read the reduction variable itself.",
+                    assignment.Expression);
+            }
+
             return;
         }
 
@@ -493,6 +603,17 @@ public sealed class TypeChecker
         if (TryResolveIndexedBaseVariable(indexedAssignment.Target, out var baseVariable) && !baseVariable.IsMutable)
         {
             ReportTypeError($"Variable '{baseVariable.Name}' is immutable and cannot be assigned.", indexedAssignment);
+        }
+
+        if (TryGetCurrentParallelLoopContext(out var parallelContext)
+            && TryResolveIndexedBaseVariableWithScopeDepth(indexedAssignment.Target, out _, out var baseScopeDepth)
+            && baseScopeDepth > 0
+            && baseScopeDepth < parallelContext.ScopeDepth
+            && !HasDirectIterationIndex(indexedAssignment.Target, parallelContext.IterationVariableName))
+        {
+            ReportTypeError(
+                $"Counted paralloop indexed writes to outer storage must reference iteration variable '{parallelContext.IterationVariableName}'.",
+                indexedAssignment);
         }
 
         var targetType = CheckExpression(indexedAssignment.Target);
@@ -1143,6 +1264,29 @@ public sealed class TypeChecker
         return false;
     }
 
+    private bool TryLookupVariableSymbolWithScopeDepth(string name, out VariableSymbol symbol, out int scopeDepth)
+    {
+        if (!TryLookupVariableSymbol(name, out symbol))
+        {
+            scopeDepth = 0;
+            return false;
+        }
+
+        if (Symbols.TryLookupWithScopeDepth(symbol.Name, out _, out scopeDepth))
+        {
+            return true;
+        }
+
+        if (!name.Contains('.', StringComparison.Ordinal)
+            && Symbols.TryLookupWithScopeDepth(name, out _, out scopeDepth))
+        {
+            return true;
+        }
+
+        scopeDepth = 1;
+        return true;
+    }
+
     private bool HasVariablePrefix(string dottedPath)
     {
         var candidate = dottedPath;
@@ -1245,6 +1389,56 @@ public sealed class TypeChecker
         _diagnostics.ReportTypeError(message, span.Line, span.Column, span.Length);
     }
 
+    private bool IsInsideParallelLoopBody()
+    {
+        return _parallelLoopContexts.Count > 0;
+    }
+
+    private bool TryGetCurrentParallelLoopContext(out ParallelLoopContext context)
+    {
+        if (_parallelLoopContexts.Count > 0)
+        {
+            context = _parallelLoopContexts.Peek();
+            return true;
+        }
+
+        context = null!;
+        return false;
+    }
+
+    private static bool ContainsNameReference(ExpressionSyntax expression, string identifier)
+    {
+        return expression switch
+        {
+            NameExpressionSyntax name => string.Equals(name.Identifier, identifier, StringComparison.Ordinal),
+            IndexExpressionSyntax index => ContainsNameReference(index.Target, identifier) || ContainsNameReference(index.Index, identifier),
+            UnaryExpressionSyntax unary => ContainsNameReference(unary.Operand, identifier),
+            BinaryExpressionSyntax binary => ContainsNameReference(binary.Left, identifier) || ContainsNameReference(binary.Right, identifier),
+            ParenthesizedExpressionSyntax parenthesized => ContainsNameReference(parenthesized.Expression, identifier),
+            ArrayLiteralExpressionSyntax arrayLiteral => arrayLiteral.Elements.Any(element => ContainsNameReference(element, identifier)),
+            ConstructorExpressionSyntax constructor => constructor.Arguments.Any(argument => ContainsNameReference(argument, identifier)),
+            CastExpressionSyntax cast => ContainsNameReference(cast.Expression, identifier),
+            _ => false
+        };
+    }
+
+    private static bool HasDirectIterationIndex(ExpressionSyntax expression, string identifier)
+    {
+        return expression switch
+        {
+            IndexExpressionSyntax indexExpression =>
+                IsNameReference(indexExpression.Index, identifier)
+                || HasDirectIterationIndex(indexExpression.Target, identifier),
+            _ => false
+        };
+    }
+
+    private static bool IsNameReference(ExpressionSyntax expression, string identifier)
+    {
+        return expression is NameExpressionSyntax name
+            && string.Equals(name.Identifier, identifier, StringComparison.Ordinal);
+    }
+
     private bool TryResolveIndexedBaseVariable(ExpressionSyntax expression, out VariableSymbol symbol)
     {
         switch (expression)
@@ -1257,6 +1451,23 @@ public sealed class TypeChecker
 
             default:
                 symbol = null!;
+                return false;
+        }
+    }
+
+    private bool TryResolveIndexedBaseVariableWithScopeDepth(ExpressionSyntax expression, out VariableSymbol symbol, out int scopeDepth)
+    {
+        switch (expression)
+        {
+            case IndexExpressionSyntax indexExpression:
+                return TryResolveIndexedBaseVariableWithScopeDepth(indexExpression.Target, out symbol, out scopeDepth);
+
+            case NameExpressionSyntax name:
+                return TryLookupVariableSymbolWithScopeDepth(name.Identifier, out symbol, out scopeDepth);
+
+            default:
+                symbol = null!;
+                scopeDepth = 0;
                 return false;
         }
     }

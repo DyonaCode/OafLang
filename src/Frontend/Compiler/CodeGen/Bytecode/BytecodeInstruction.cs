@@ -20,6 +20,9 @@ public enum BytecodeOpCode
     ArrayCreate,
     ArrayGet,
     ArraySet,
+    ParallelForBegin,
+    ParallelForEnd,
+    ParallelReduceAdd,
     Return
 }
 

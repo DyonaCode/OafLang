@@ -11,6 +11,9 @@ public enum IrInstructionKind
     ArrayCreate,
     ArrayGet,
     ArraySet,
+    ParallelForBegin,
+    ParallelForEnd,
+    ParallelReduceAdd,
     Branch,
     Jump,
     Return
@@ -348,6 +351,78 @@ public sealed class IrArraySetInstruction : IrInstruction
     public override string ToDisplayString()
     {
         return $"{Array.DisplayText}[{Index.DisplayText}] = {Value.DisplayText}";
+    }
+}
+
+public sealed class IrParallelForBeginInstruction : IrInstruction
+{
+    public IrParallelForBeginInstruction(IrValue count, IrVariableValue iterationVariable)
+    {
+        Count = count;
+        IterationVariable = iterationVariable;
+    }
+
+    public IrValue Count { get; set; }
+
+    public IrVariableValue IterationVariable { get; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.ParallelForBegin;
+
+    public override bool HasSideEffects => true;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Count;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"parallel_for_begin count={Count.DisplayText}, iter={IterationVariable.DisplayText}";
+    }
+}
+
+public sealed class IrParallelForEndInstruction : IrInstruction
+{
+    public override IrInstructionKind Kind => IrInstructionKind.ParallelForEnd;
+
+    public override bool HasSideEffects => true;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield break;
+    }
+
+    public override string ToDisplayString()
+    {
+        return "parallel_for_end";
+    }
+}
+
+public sealed class IrParallelReduceAddInstruction : IrInstruction
+{
+    public IrParallelReduceAddInstruction(IrVariableValue target, IrValue value)
+    {
+        Target = target;
+        Value = value;
+    }
+
+    public IrVariableValue Target { get; }
+
+    public IrValue Value { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.ParallelReduceAdd;
+
+    public override bool HasSideEffects => true;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Target;
+        yield return Value;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"parallel_reduce_add {Target.DisplayText} += {Value.DisplayText}";
     }
 }
 

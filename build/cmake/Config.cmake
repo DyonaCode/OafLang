@@ -140,3 +140,17 @@ add_executable(
 )
 
 target_link_libraries(oaf_advanced_concurrency_smoke PRIVATE oaf_runtime)
+
+add_executable(
+    oaf_example_lightweight_threads
+    ${CMAKE_CURRENT_LIST_DIR}/../../examples/runtime/01_lightweight_threads_and_channels.c
+)
+
+target_link_libraries(oaf_example_lightweight_threads PRIVATE oaf_runtime)
+
+add_executable(
+    oaf_example_task_parallel
+    ${CMAKE_CURRENT_LIST_DIR}/../../examples/runtime/02_task_pool_async_and_parallel.c
+)
+
+target_link_libraries(oaf_example_task_parallel PRIVATE oaf_runtime)

@@ -1,0 +1,11 @@
+flux sum = 0;
+
+// Counted paralloop with first-class '+=' reduction.
+// Each iteration contributes to 'sum' in parallel; runtime performs thread-safe merge.
+paralloop 8, i => {
+    sum += (i + 1) * (i + 1);
+}
+
+Jot("parallel_workload_sum");
+Jot(sum);
+return sum;

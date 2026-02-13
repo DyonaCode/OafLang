@@ -26,6 +26,7 @@ public static class ParserTests
             ("parses_match_statement", ParsesMatchStatement),
             ("parses_array_type_and_array_literal", ParsesArrayTypeAndArrayLiteral),
             ("parses_index_expression_and_indexed_assignment", ParsesIndexExpressionAndIndexedAssignment),
+            ("parses_counted_paralloop_with_iteration_variable", ParsesCountedParalloopWithIterationVariable),
             ("parses_module_and_import_statements", ParsesModuleAndImportStatements),
             ("parses_string_literal_import_statement", ParsesStringLiteralImportStatement),
             ("parses_public_class_declaration_with_modifiers", ParsesPublicClassDeclarationWithModifiers),
@@ -273,6 +274,20 @@ public static class ParserTests
         var returnStatement = unit.Statements[2] as ReturnStatementSyntax;
         TestAssertions.True(returnStatement is not null, "Expected return statement.");
         TestAssertions.True(returnStatement!.Expression is IndexExpressionSyntax, "Expected indexed return expression.");
+    }
+
+    private static void ParsesCountedParalloopWithIterationVariable()
+    {
+        const string source = "flux values = [0, 0, 0, 0]; paralloop 4, i => values[i] = i + 1; return values[3];";
+        var parser = new Frontend.Compiler.Parser.Parser(source);
+        var unit = parser.ParseCompilationUnit();
+
+        TestAssertions.False(parser.Diagnostics.HasErrors, "Expected counted paralloop syntax to parse.");
+        TestAssertions.Equal(3, unit.Statements.Count);
+        var loop = unit.Statements[1] as LoopStatementSyntax;
+        TestAssertions.True(loop is not null, "Expected paralloop statement.");
+        TestAssertions.True(loop!.IsParallel, "Expected paralloop flag to be set.");
+        TestAssertions.Equal("i", loop.IterationVariable);
     }
 
     private static void ParsesModuleAndImportStatements()

@@ -117,6 +117,14 @@ public sealed class ConstantFoldingPass : IIrOptimizationPass
                         arraySet.Value = ReplaceKnownConstants(arraySet.Value, knownConstants);
                         break;
 
+                    case IrParallelForBeginInstruction parallelBegin:
+                        parallelBegin.Count = ReplaceKnownConstants(parallelBegin.Count, knownConstants);
+                        break;
+
+                    case IrParallelReduceAddInstruction parallelReduceAdd:
+                        parallelReduceAdd.Value = ReplaceKnownConstants(parallelReduceAdd.Value, knownConstants);
+                        break;
+
                     case IrBranchInstruction branch:
                         branch.Condition = ReplaceKnownConstants(branch.Condition, knownConstants);
                         if (TryGetTruthiness(branch.Condition, out var condition))

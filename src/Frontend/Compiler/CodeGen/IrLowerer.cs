@@ -20,6 +20,7 @@ public sealed class IrLowerer
 
     private readonly Stack<Dictionary<string, IrVariableValue>> _scopes = new();
     private readonly Stack<(string BreakLabel, string ContinueLabel)> _loopLabels = new();
+    private readonly Stack<(int ScopeDepth, string IterationVariableName)> _parallelLoopContexts = new();
     private readonly HashSet<string> _importedModules = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AggregateTypeMetadata> _aggregateTypes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Dictionary<string, int>> _enumVariantValues = new(StringComparer.Ordinal);
@@ -36,6 +37,7 @@ public sealed class IrLowerer
         _labelCounter = 0;
         _scopes.Clear();
         _loopLabels.Clear();
+        _parallelLoopContexts.Clear();
         _currentModule = null;
         _importedModules.Clear();
         _aggregateTypes.Clear();
@@ -220,6 +222,16 @@ public sealed class IrLowerer
     private void LowerAssignment(AssignmentStatementSyntax assignment)
     {
         var variable = ResolveVariableWithContext(assignment.Identifier) ?? new IrVariableValue(IrType.Unknown, assignment.Identifier);
+        if (TryGetCurrentParallelLoopContext(out var parallelContext)
+            && TryResolveVariableWithScopeDepth(assignment.Identifier, out _, out var scopeDepth)
+            && scopeDepth > 0
+            && scopeDepth < parallelContext.ScopeDepth
+            && assignment.OperatorKind == TokenKind.PlusEqualsToken)
+        {
+            var contribution = LowerExpression(assignment.Expression);
+            Emit(new IrParallelReduceAddInstruction(variable, contribution));
+            return;
+        }
 
         if (assignment.OperatorKind == TokenKind.EqualsToken
             && assignment.Expression is ConstructorExpressionSyntax constructor
@@ -396,6 +408,12 @@ public sealed class IrLowerer
 
     private void LowerLoopStatement(LoopStatementSyntax statement)
     {
+        if (statement.IsParallel && !string.IsNullOrWhiteSpace(statement.IterationVariable))
+        {
+            LowerCountedParallelLoop(statement);
+            return;
+        }
+
         var conditionLabel = AllocateLabel("loop_cond");
         var bodyLabel = AllocateLabel("loop_body");
         var endLabel = AllocateLabel("loop_end");
@@ -429,6 +447,23 @@ public sealed class IrLowerer
 
         var endBlock = CreateBlock(endLabel);
         SetCurrentBlock(endBlock);
+    }
+
+    private void LowerCountedParallelLoop(LoopStatementSyntax statement)
+    {
+        EnterScope();
+
+        var iterationVariable = new IrVariableValue(IrType.Int, statement.IterationVariable!);
+        DeclareVariable(iterationVariable);
+        var count = LowerExpression(statement.IteratorOrCondition);
+        _parallelLoopContexts.Push((_scopes.Count, iterationVariable.Name));
+
+        Emit(new IrParallelForBeginInstruction(count, iterationVariable));
+        LowerStatement(statement.Body);
+        Emit(new IrParallelForEndInstruction());
+        _parallelLoopContexts.Pop();
+
+        ExitScope();
     }
 
     private void LowerThrowStatement(ThrowStatementSyntax throwStatement)
@@ -799,6 +834,45 @@ public sealed class IrLowerer
             candidate = candidate[..separatorIndex];
         }
 
+        return false;
+    }
+
+    private bool TryResolveVariableWithScopeDepth(string name, out IrVariableValue variable, out int scopeDepth)
+    {
+        var currentDepth = _scopes.Count;
+        foreach (var scope in _scopes)
+        {
+            if (scope.TryGetValue(name, out variable!))
+            {
+                scopeDepth = currentDepth;
+                return true;
+            }
+
+            currentDepth--;
+        }
+
+        var resolved = ResolveVariableWithContext(name);
+        if (resolved is not null)
+        {
+            variable = resolved;
+            scopeDepth = 1;
+            return true;
+        }
+
+        variable = null!;
+        scopeDepth = 0;
+        return false;
+    }
+
+    private bool TryGetCurrentParallelLoopContext(out (int ScopeDepth, string IterationVariableName) context)
+    {
+        if (_parallelLoopContexts.Count > 0)
+        {
+            context = _parallelLoopContexts.Peek();
+            return true;
+        }
+
+        context = default;
         return false;
     }
 

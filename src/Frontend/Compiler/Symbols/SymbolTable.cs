@@ -54,6 +54,25 @@ public sealed class SymbolTable
         return false;
     }
 
+    public bool TryLookupWithScopeDepth(string name, out VariableSymbol? symbol, out int scopeDepth)
+    {
+        var currentDepth = _scopes.Count;
+        foreach (var scope in _scopes)
+        {
+            if (scope.TryGetValue(name, out symbol))
+            {
+                scopeDepth = currentDepth;
+                return true;
+            }
+
+            currentDepth--;
+        }
+
+        symbol = null;
+        scopeDepth = 0;
+        return false;
+    }
+
     public bool TryDeclareType(TypeSymbol symbol)
     {
         if (_types.ContainsKey(symbol.Name))

@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Oaf.Frontend.Compiler.CodeGen.Bytecode;
 
@@ -220,6 +222,41 @@ public sealed class BytecodeVirtualMachine
                         break;
                     }
 
+                    case BytecodeOpCode.ParallelForBegin:
+                    {
+                        var endIndex = ResolveParallelForEndIndex(function, pc, instruction);
+                        if (endIndex < 0)
+                        {
+                            return new BytecodeExecutionResult(false, null, $"Unable to resolve parallel loop end for instruction {pc}.");
+                        }
+
+                        var count = Math.Max(0L, ToLong(slots[instruction.A]));
+                        if (count > 0)
+                        {
+                            var error = ExecuteParallelForRange(function, slots, instruction.B, count, pc + 1, endIndex);
+                            if (error is not null)
+                            {
+                                return new BytecodeExecutionResult(false, null, error);
+                            }
+                        }
+
+                        pc = endIndex + 1;
+                        break;
+                    }
+
+                    case BytecodeOpCode.ParallelForEnd:
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.ParallelReduceAdd:
+                    {
+                        var current = ToLong(slots[instruction.A]);
+                        var contribution = ToLong(slots[instruction.B]);
+                        slots[instruction.A] = unchecked(current + contribution);
+                        pc++;
+                        break;
+                    }
+
                     case BytecodeOpCode.Return:
                         return new BytecodeExecutionResult(true, instruction.A < 0 ? null : slots[instruction.A], null);
 
@@ -234,6 +271,340 @@ public sealed class BytecodeVirtualMachine
         {
             return new BytecodeExecutionResult(false, null, ex.Message);
         }
+    }
+
+    private static int ResolveParallelForEndIndex(BytecodeFunction function, int beginIndex, BytecodeInstruction beginInstruction)
+    {
+        if (beginInstruction.C > beginIndex
+            && beginInstruction.C < function.Instructions.Count
+            && function.Instructions[beginInstruction.C].OpCode == BytecodeOpCode.ParallelForEnd)
+        {
+            return beginInstruction.C;
+        }
+
+        var depth = 0;
+        for (var index = beginIndex + 1; index < function.Instructions.Count; index++)
+        {
+            switch (function.Instructions[index].OpCode)
+            {
+                case BytecodeOpCode.ParallelForBegin:
+                    depth++;
+                    break;
+
+                case BytecodeOpCode.ParallelForEnd:
+                    if (depth == 0)
+                    {
+                        return index;
+                    }
+
+                    depth--;
+                    break;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string? ExecuteParallelForRange(
+        BytecodeFunction function,
+        object?[] sharedSlots,
+        int iterationSlot,
+        long iterationCount,
+        int bodyStart,
+        int bodyEndExclusive)
+    {
+        if (bodyStart < 0 || bodyStart > bodyEndExclusive || bodyEndExclusive > function.Instructions.Count)
+        {
+            return "Invalid parallel loop body range.";
+        }
+
+        string? error = null;
+        var reductionMergeLock = new object();
+
+        try
+        {
+            Parallel.For(
+                0L,
+                iterationCount,
+                () => new Dictionary<int, long>(),
+                (iteration, state, localReductions) =>
+                {
+                    if (Volatile.Read(ref error) is not null)
+                    {
+                        state.Stop();
+                        return localReductions;
+                    }
+
+                    var localSlots = (object?[])sharedSlots.Clone();
+                    localSlots[iterationSlot] = iteration;
+
+                    if (!TryExecuteInstructionRange(
+                            function,
+                            localSlots,
+                            bodyStart,
+                            bodyEndExclusive,
+                            localReductions,
+                            out var iterationError))
+                    {
+                        Interlocked.CompareExchange(ref error, iterationError ?? "Parallel loop iteration failed.", null);
+                        state.Stop();
+                    }
+
+                    return localReductions;
+                },
+                localReductions =>
+                {
+                    if (localReductions.Count == 0)
+                    {
+                        return;
+                    }
+
+                    lock (reductionMergeLock)
+                    {
+                        foreach (var (slot, contribution) in localReductions)
+                        {
+                            var current = ToLong(sharedSlots[slot]);
+                            sharedSlots[slot] = unchecked(current + contribution);
+                        }
+                    }
+                });
+        }
+        catch (Exception ex)
+        {
+            var runtimeException = ex is AggregateException aggregate && aggregate.InnerExceptions.Count > 0
+                ? aggregate.InnerExceptions[0]
+                : ex;
+            return runtimeException.Message;
+        }
+
+        return error;
+    }
+
+    private static bool TryExecuteInstructionRange(
+        BytecodeFunction function,
+        object?[] slots,
+        int start,
+        int endExclusive,
+        Dictionary<int, long> reductions,
+        out string? error)
+    {
+        error = null;
+        var pc = start;
+
+        try
+        {
+            while (pc < endExclusive)
+            {
+                var instruction = function.Instructions[pc];
+                switch (instruction.OpCode)
+                {
+                    case BytecodeOpCode.Nop:
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.LoadConst:
+                        slots[instruction.A] = function.Constants[instruction.B];
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.Move:
+                        slots[instruction.A] = slots[instruction.B];
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.Unary:
+                        slots[instruction.A] = EvaluateUnary((BytecodeUnaryOperator)instruction.B, slots[instruction.C]);
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.Binary:
+                        slots[instruction.A] = EvaluateBinary(
+                            (BytecodeBinaryOperator)instruction.B,
+                            slots[instruction.C],
+                            slots[instruction.D]);
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.BinaryInt:
+                        slots[instruction.A] = EvaluateBinaryIntAsObject(
+                            (BytecodeBinaryOperator)instruction.B,
+                            ToLong(slots[instruction.C]),
+                            ToLong(slots[instruction.D]));
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.BinaryIntConstRight:
+                        slots[instruction.A] = EvaluateBinaryIntAsObject(
+                            (BytecodeBinaryOperator)instruction.B,
+                            ToLong(slots[instruction.C]),
+                            ToLong(function.Constants[instruction.D]));
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.JumpIfBinaryIntTrue:
+                    {
+                        var value = EvaluateBinaryInt(
+                            (BytecodeBinaryOperator)instruction.C,
+                            ToLong(slots[instruction.A]),
+                            ToLong(slots[instruction.B]),
+                            out _);
+                        var target = value != 0 ? instruction.D : pc + 1;
+                        if (target < start || target >= endExclusive)
+                        {
+                            error = "Parallel loop body contains jump outside permitted range.";
+                            return false;
+                        }
+
+                        pc = target;
+                        break;
+                    }
+
+                    case BytecodeOpCode.JumpIfBinaryIntConstRightTrue:
+                    {
+                        var value = EvaluateBinaryInt(
+                            (BytecodeBinaryOperator)instruction.C,
+                            ToLong(slots[instruction.A]),
+                            ToLong(function.Constants[instruction.B]),
+                            out _);
+                        var target = value != 0 ? instruction.D : pc + 1;
+                        if (target < start || target >= endExclusive)
+                        {
+                            error = "Parallel loop body contains jump outside permitted range.";
+                            return false;
+                        }
+
+                        pc = target;
+                        break;
+                    }
+
+                    case BytecodeOpCode.Cast:
+                        slots[instruction.A] = EvaluateCast(slots[instruction.B], (IrTypeKind)instruction.C);
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.Jump:
+                        if (instruction.A < start || instruction.A >= endExclusive)
+                        {
+                            error = "Parallel loop body contains jump outside permitted range.";
+                            return false;
+                        }
+
+                        pc = instruction.A;
+                        break;
+
+                    case BytecodeOpCode.JumpIfTrue:
+                    {
+                        var target = ToBool(slots[instruction.A]) ? instruction.B : pc + 1;
+                        if (target < start || target >= endExclusive)
+                        {
+                            error = "Parallel loop body contains jump outside permitted range.";
+                            return false;
+                        }
+
+                        pc = target;
+                        break;
+                    }
+
+                    case BytecodeOpCode.JumpIfFalse:
+                    {
+                        var target = ToBool(slots[instruction.A]) ? pc + 1 : instruction.B;
+                        if (target < start || target >= endExclusive)
+                        {
+                            error = "Parallel loop body contains jump outside permitted range.";
+                            return false;
+                        }
+
+                        pc = target;
+                        break;
+                    }
+
+                    case BytecodeOpCode.ArrayCreate:
+                    {
+                        var length = Math.Max(0, (int)ToLong(slots[instruction.B]));
+                        slots[instruction.A] = new object?[length];
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.ArrayGet:
+                    {
+                        var array = RequireArrayValue(slots[instruction.B]);
+                        var index = (int)ToLong(slots[instruction.C]);
+                        if (index < 0 || index >= array.Length)
+                        {
+                            throw new IndexOutOfRangeException($"Array index {index} is out of range for length {array.Length}.");
+                        }
+
+                        slots[instruction.A] = array[index];
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.ArraySet:
+                    {
+                        var array = RequireArrayValue(slots[instruction.A]);
+                        var index = (int)ToLong(slots[instruction.B]);
+                        if (index < 0 || index >= array.Length)
+                        {
+                            throw new IndexOutOfRangeException($"Array index {index} is out of range for length {array.Length}.");
+                        }
+
+                        array[index] = slots[instruction.C];
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.ParallelForBegin:
+                    case BytecodeOpCode.ParallelForEnd:
+                        error = "Nested counted paralloops are not supported.";
+                        return false;
+
+                    case BytecodeOpCode.ParallelReduceAdd:
+                    {
+                        var slot = instruction.A;
+                        var contribution = ToLong(slots[instruction.B]);
+                        if (reductions.TryGetValue(slot, out var current))
+                        {
+                            reductions[slot] = unchecked(current + contribution);
+                        }
+                        else
+                        {
+                            reductions[slot] = contribution;
+                        }
+
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.Print:
+                        error = "Jot/print is not supported inside counted paralloop bodies.";
+                        return false;
+
+                    case BytecodeOpCode.Throw:
+                    {
+                        var errorValue = instruction.A >= 0 ? slots[instruction.A] : null;
+                        var detailValue = instruction.B >= 0 ? slots[instruction.B] : null;
+                        error = BuildThrownErrorMessage(errorValue, detailValue);
+                        return false;
+                    }
+
+                    case BytecodeOpCode.Return:
+                        error = "Return is not supported inside counted paralloop bodies.";
+                        return false;
+
+                    default:
+                        error = $"Unsupported opcode '{instruction.OpCode}' in counted paralloop body.";
+                        return false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+
+        return true;
     }
 
     private static bool TryExecuteIntegerFastPath(BytecodeFunction function, out BytecodeExecutionResult result)
