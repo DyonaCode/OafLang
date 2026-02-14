@@ -220,11 +220,14 @@ jobs:
             $oafHome = Join-Path $tempDir "oaf-home"
             $shim = Join-Path $installDir "oaf.cmd"
 
-            & (Join-Path $packageRoot "install.ps1") -InstallDir $installDir -OafHome $oafHome -Version $version
-            if ($LASTEXITCODE -ne 0) {
-              throw "Installer failed."
+            try {
+              & (Join-Path $packageRoot "install.ps1") -InstallDir $installDir -OafHome $oafHome -Version $version
+            }
+            catch {
+              throw "Installer failed: $($_.Exception.Message)"
             }
 
+            $env:OAF_HOME = $oafHome
             & $shim --version
             if ($LASTEXITCODE -ne 0) {
               throw "Shim --version failed."

@@ -168,30 +168,25 @@ jobs:
       - name: Execute smoke binaries
         run: |
           run_smoke() {
-            local new_name="$1"
-            local old_name="$2"
-            if [[ -x "./build/${new_name}" ]]; then
-              "./build/${new_name}"
+            local name="$1"
+            if [[ -x "./build/${name}" ]]; then
+              "./build/${name}"
               return
             fi
-            if [[ -x "./build/${old_name}" ]]; then
-              "./build/${old_name}"
-              return
-            fi
-            echo "Missing smoke binary: ./build/${new_name} (or ./build/${old_name})" >&2
+            echo "Missing smoke binary: ./build/${name}" >&2
             ls -la ./build >&2 || true
             exit 1
           }
 
-          run_smoke oaf_error_smoke oaflang_error_smoke
-          run_smoke oaf_memory_smoke oaflang_memory_smoke
-          run_smoke oaf_runtime_smoke oaflang_runtime_smoke
-          run_smoke oaf_types_smoke oaflang_types_smoke
-          run_smoke oaf_concurrency_smoke oaflang_concurrency_smoke
-          run_smoke oaf_ffi_smoke oaflang_ffi_smoke
-          run_smoke oaf_collections_smoke oaflang_collections_smoke
-          run_smoke oaf_stdlib_smoke oaflang_stdlib_smoke
-          run_smoke oaf_advanced_concurrency_smoke oaflang_advanced_concurrency_smoke
+          run_smoke oaf_error_smoke
+          run_smoke oaf_memory_smoke
+          run_smoke oaf_runtime_smoke
+          run_smoke oaf_types_smoke
+          run_smoke oaf_concurrency_smoke
+          run_smoke oaf_ffi_smoke
+          run_smoke oaf_collections_smoke
+          run_smoke oaf_stdlib_smoke
+          run_smoke oaf_advanced_concurrency_smoke
 
   packaged_examples:
     if: needs.discover_prs.outputs.eligible_count != '0'
