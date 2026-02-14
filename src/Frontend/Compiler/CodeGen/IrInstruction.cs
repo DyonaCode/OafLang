@@ -7,6 +7,27 @@ public enum IrInstructionKind
     Binary,
     Cast,
     Print,
+    HttpGet,
+    HttpSend,
+    HttpHeader,
+    HttpQuery,
+    HttpUrlEncode,
+    HttpClientOpen,
+    HttpClientConfigure,
+    HttpClientConfigureRetry,
+    HttpClientConfigureProxy,
+    HttpClientDefaultHeaders,
+    HttpClientSend,
+    HttpClientClose,
+    HttpClientRequestsSent,
+    HttpClientRetriesUsed,
+    HttpLastBody,
+    HttpLastStatus,
+    HttpLastError,
+    HttpLastReason,
+    HttpLastContentType,
+    HttpLastHeaders,
+    HttpLastHeader,
     Throw,
     ArrayCreate,
     ArrayGet,
@@ -214,6 +235,678 @@ public sealed class IrPrintInstruction : IrInstruction
     public override string ToDisplayString()
     {
         return $"print {Value.DisplayText}";
+    }
+}
+
+public sealed class IrHttpGetInstruction : IrInstruction
+{
+    public IrHttpGetInstruction(IrTemporaryValue destination, IrValue url)
+    {
+        Destination = destination;
+        Url = url;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Url { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpGet;
+
+    public override bool HasSideEffects => true;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Url;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_get {Url.DisplayText}";
+    }
+}
+
+public sealed class IrHttpSendInstruction : IrInstruction
+{
+    public IrHttpSendInstruction(
+        IrTemporaryValue destination,
+        IrValue url,
+        IrValue method,
+        IrValue body,
+        IrValue timeoutMs,
+        IrValue headers)
+    {
+        Destination = destination;
+        Url = url;
+        Method = method;
+        Body = body;
+        TimeoutMs = timeoutMs;
+        Headers = headers;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Url { get; set; }
+
+    public IrValue Method { get; set; }
+
+    public IrValue Body { get; set; }
+
+    public IrValue TimeoutMs { get; set; }
+
+    public IrValue Headers { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpSend;
+
+    public override bool HasSideEffects => true;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Url;
+        yield return Method;
+        yield return Body;
+        yield return TimeoutMs;
+        yield return Headers;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_send {Method.DisplayText} {Url.DisplayText} timeout={TimeoutMs.DisplayText} headers={Headers.DisplayText}";
+    }
+}
+
+public sealed class IrHttpHeaderInstruction : IrInstruction
+{
+    public IrHttpHeaderInstruction(IrTemporaryValue destination, IrValue headers, IrValue name, IrValue value)
+    {
+        Destination = destination;
+        Headers = headers;
+        Name = name;
+        Value = value;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Headers { get; set; }
+
+    public IrValue Name { get; set; }
+
+    public IrValue Value { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpHeader;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Headers;
+        yield return Name;
+        yield return Value;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_header {Headers.DisplayText}, {Name.DisplayText}, {Value.DisplayText}";
+    }
+}
+
+public sealed class IrHttpQueryInstruction : IrInstruction
+{
+    public IrHttpQueryInstruction(IrTemporaryValue destination, IrValue url, IrValue key, IrValue value)
+    {
+        Destination = destination;
+        Url = url;
+        Key = key;
+        Value = value;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Url { get; set; }
+
+    public IrValue Key { get; set; }
+
+    public IrValue Value { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpQuery;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Url;
+        yield return Key;
+        yield return Value;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_query {Url.DisplayText}, {Key.DisplayText}, {Value.DisplayText}";
+    }
+}
+
+public sealed class IrHttpUrlEncodeInstruction : IrInstruction
+{
+    public IrHttpUrlEncodeInstruction(IrTemporaryValue destination, IrValue value)
+    {
+        Destination = destination;
+        Value = value;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Value { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpUrlEncode;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Value;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_url_encode {Value.DisplayText}";
+    }
+}
+
+public sealed class IrHttpClientOpenInstruction : IrInstruction
+{
+    public IrHttpClientOpenInstruction(IrTemporaryValue destination, IrValue baseUrl)
+    {
+        Destination = destination;
+        BaseUrl = baseUrl;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue BaseUrl { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpClientOpen;
+
+    public override bool HasSideEffects => true;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return BaseUrl;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_client_open {BaseUrl.DisplayText}";
+    }
+}
+
+public sealed class IrHttpClientConfigureInstruction : IrInstruction
+{
+    public IrHttpClientConfigureInstruction(
+        IrTemporaryValue destination,
+        IrValue client,
+        IrValue timeoutMs,
+        IrValue allowRedirects,
+        IrValue maxRedirects,
+        IrValue userAgent)
+    {
+        Destination = destination;
+        Client = client;
+        TimeoutMs = timeoutMs;
+        AllowRedirects = allowRedirects;
+        MaxRedirects = maxRedirects;
+        UserAgent = userAgent;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Client { get; set; }
+
+    public IrValue TimeoutMs { get; set; }
+
+    public IrValue AllowRedirects { get; set; }
+
+    public IrValue MaxRedirects { get; set; }
+
+    public IrValue UserAgent { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpClientConfigure;
+
+    public override bool HasSideEffects => true;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Client;
+        yield return TimeoutMs;
+        yield return AllowRedirects;
+        yield return MaxRedirects;
+        yield return UserAgent;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_client_configure client={Client.DisplayText} timeout={TimeoutMs.DisplayText} redirects={AllowRedirects.DisplayText}/{MaxRedirects.DisplayText} ua={UserAgent.DisplayText}";
+    }
+}
+
+public sealed class IrHttpClientConfigureRetryInstruction : IrInstruction
+{
+    public IrHttpClientConfigureRetryInstruction(
+        IrTemporaryValue destination,
+        IrValue client,
+        IrValue maxRetries,
+        IrValue retryDelayMs)
+    {
+        Destination = destination;
+        Client = client;
+        MaxRetries = maxRetries;
+        RetryDelayMs = retryDelayMs;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Client { get; set; }
+
+    public IrValue MaxRetries { get; set; }
+
+    public IrValue RetryDelayMs { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpClientConfigureRetry;
+
+    public override bool HasSideEffects => true;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Client;
+        yield return MaxRetries;
+        yield return RetryDelayMs;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_client_configure_retry client={Client.DisplayText} retries={MaxRetries.DisplayText} delay_ms={RetryDelayMs.DisplayText}";
+    }
+}
+
+public sealed class IrHttpClientConfigureProxyInstruction : IrInstruction
+{
+    public IrHttpClientConfigureProxyInstruction(
+        IrTemporaryValue destination,
+        IrValue client,
+        IrValue proxyUrl)
+    {
+        Destination = destination;
+        Client = client;
+        ProxyUrl = proxyUrl;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Client { get; set; }
+
+    public IrValue ProxyUrl { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpClientConfigureProxy;
+
+    public override bool HasSideEffects => true;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Client;
+        yield return ProxyUrl;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_client_configure_proxy client={Client.DisplayText} proxy={ProxyUrl.DisplayText}";
+    }
+}
+
+public sealed class IrHttpClientDefaultHeadersInstruction : IrInstruction
+{
+    public IrHttpClientDefaultHeadersInstruction(IrTemporaryValue destination, IrValue client, IrValue headers)
+    {
+        Destination = destination;
+        Client = client;
+        Headers = headers;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Client { get; set; }
+
+    public IrValue Headers { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpClientDefaultHeaders;
+
+    public override bool HasSideEffects => true;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Client;
+        yield return Headers;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_client_default_headers client={Client.DisplayText}, headers={Headers.DisplayText}";
+    }
+}
+
+public sealed class IrHttpClientSendInstruction : IrInstruction
+{
+    public IrHttpClientSendInstruction(
+        IrTemporaryValue destination,
+        IrValue client,
+        IrValue pathOrUrl,
+        IrValue method,
+        IrValue body,
+        IrValue headers)
+    {
+        Destination = destination;
+        Client = client;
+        PathOrUrl = pathOrUrl;
+        Method = method;
+        Body = body;
+        Headers = headers;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Client { get; set; }
+
+    public IrValue PathOrUrl { get; set; }
+
+    public IrValue Method { get; set; }
+
+    public IrValue Body { get; set; }
+
+    public IrValue Headers { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpClientSend;
+
+    public override bool HasSideEffects => true;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Client;
+        yield return PathOrUrl;
+        yield return Method;
+        yield return Body;
+        yield return Headers;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_client_send client={Client.DisplayText} method={Method.DisplayText} target={PathOrUrl.DisplayText}";
+    }
+}
+
+public sealed class IrHttpClientCloseInstruction : IrInstruction
+{
+    public IrHttpClientCloseInstruction(IrTemporaryValue destination, IrValue client)
+    {
+        Destination = destination;
+        Client = client;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Client { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpClientClose;
+
+    public override bool HasSideEffects => true;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Client;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_client_close {Client.DisplayText}";
+    }
+}
+
+public sealed class IrHttpClientRequestsSentInstruction : IrInstruction
+{
+    public IrHttpClientRequestsSentInstruction(IrTemporaryValue destination, IrValue client)
+    {
+        Destination = destination;
+        Client = client;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Client { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpClientRequestsSent;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Client;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_client_requests_sent {Client.DisplayText}";
+    }
+}
+
+public sealed class IrHttpClientRetriesUsedInstruction : IrInstruction
+{
+    public IrHttpClientRetriesUsedInstruction(IrTemporaryValue destination, IrValue client)
+    {
+        Destination = destination;
+        Client = client;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue Client { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpClientRetriesUsed;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return Client;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_client_retries_used {Client.DisplayText}";
+    }
+}
+
+public sealed class IrHttpLastBodyInstruction : IrInstruction
+{
+    public IrHttpLastBodyInstruction(IrTemporaryValue destination)
+    {
+        Destination = destination;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpLastBody;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield break;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_last_body";
+    }
+}
+
+public sealed class IrHttpLastStatusInstruction : IrInstruction
+{
+    public IrHttpLastStatusInstruction(IrTemporaryValue destination)
+    {
+        Destination = destination;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpLastStatus;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield break;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_last_status";
+    }
+}
+
+public sealed class IrHttpLastErrorInstruction : IrInstruction
+{
+    public IrHttpLastErrorInstruction(IrTemporaryValue destination)
+    {
+        Destination = destination;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpLastError;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield break;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_last_error";
+    }
+}
+
+public sealed class IrHttpLastReasonInstruction : IrInstruction
+{
+    public IrHttpLastReasonInstruction(IrTemporaryValue destination)
+    {
+        Destination = destination;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpLastReason;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield break;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_last_reason";
+    }
+}
+
+public sealed class IrHttpLastContentTypeInstruction : IrInstruction
+{
+    public IrHttpLastContentTypeInstruction(IrTemporaryValue destination)
+    {
+        Destination = destination;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpLastContentType;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield break;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_last_content_type";
+    }
+}
+
+public sealed class IrHttpLastHeadersInstruction : IrInstruction
+{
+    public IrHttpLastHeadersInstruction(IrTemporaryValue destination)
+    {
+        Destination = destination;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpLastHeaders;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield break;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_last_headers";
+    }
+}
+
+public sealed class IrHttpLastHeaderInstruction : IrInstruction
+{
+    public IrHttpLastHeaderInstruction(IrTemporaryValue destination, IrValue headerName)
+    {
+        Destination = destination;
+        HeaderName = headerName;
+    }
+
+    public IrTemporaryValue Destination { get; }
+
+    public IrValue HeaderName { get; set; }
+
+    public override IrInstructionKind Kind => IrInstructionKind.HttpLastHeader;
+
+    public override string? WrittenTemporaryName => Destination.Name;
+
+    public override IEnumerable<IrValue> ReadValues()
+    {
+        yield return HeaderName;
+    }
+
+    public override string ToDisplayString()
+    {
+        return $"{Destination.DisplayText} = http_last_header {HeaderName.DisplayText}";
     }
 }
 

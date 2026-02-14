@@ -22,7 +22,9 @@ public static class PackageManagerTests
             ("install_fails_when_transitive_constraints_conflict", InstallFailsWhenTransitiveConstraintsConflict),
             ("compose_source_loads_only_imported_modules", ComposeSourceLoadsOnlyImportedModules),
             ("compose_source_resolves_transitive_module_imports", ComposeSourceResolvesTransitiveModuleImports),
-            ("compose_source_fails_when_module_path_does_not_match_declaration", ComposeSourceFailsWhenModulePathDoesNotMatchDeclaration)
+            ("compose_source_fails_when_module_path_does_not_match_declaration", ComposeSourceFailsWhenModulePathDoesNotMatchDeclaration),
+            ("compose_source_loads_local_modules_by_folder_path", ComposeSourceLoadsLocalModulesByFolderPath),
+            ("compose_source_infers_module_declaration_when_missing", ComposeSourceInfersModuleDeclarationWhenMissing)
         ];
     }
 
@@ -561,6 +563,71 @@ public static class PackageManagerTests
             TestAssertions.True(
                 message.Contains("must match file path module 'pkg.math'", StringComparison.Ordinal),
                 "Expected mismatch error message.");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    private static void ComposeSourceLoadsLocalModulesByFolderPath()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"oaf_pkg_compose_local_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var clientDir = Path.Combine(root, "net", "http", "client");
+            var typesDir = Path.Combine(root, "net", "http", "types");
+            Directory.CreateDirectory(clientDir);
+            Directory.CreateDirectory(typesDir);
+
+            File.WriteAllText(
+                Path.Combine(typesDir, "status.oaf"),
+                "module net.http.types.status; flux ok = 200;");
+            File.WriteAllText(
+                Path.Combine(clientDir, "core.oaf"),
+                "module net.http.client.core; import net.http.types.status; flux clientDefault = net.http.types.status.ok;");
+
+            const string entrySource = "import net.http.client.core; return net.http.client.core.clientDefault;";
+            TestAssertions.True(
+                OafPackageManager.TryComposeCompilationSource(entrySource, root, out var composedSource, out _),
+                "Expected local-folder module composition to succeed.");
+
+            TestAssertions.True(composedSource.Contains("module net.http.types.status;", StringComparison.Ordinal));
+            TestAssertions.True(composedSource.Contains("module net.http.client.core;", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    private static void ComposeSourceInfersModuleDeclarationWhenMissing()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"oaf_pkg_compose_infer_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var httpDir = Path.Combine(root, "net", "http");
+            Directory.CreateDirectory(httpDir);
+            File.WriteAllText(Path.Combine(httpDir, "helpers.oaf"), "flux helper_value = 7;");
+
+            const string entrySource = "import net.http.helpers; return net.http.helpers.helper_value;";
+            TestAssertions.True(
+                OafPackageManager.TryComposeCompilationSource(entrySource, root, out var composedSource, out _),
+                "Expected local module composition to infer module declaration.");
+
+            TestAssertions.True(
+                composedSource.Contains("module net.http.helpers;", StringComparison.Ordinal),
+                "Expected inferred module declaration to be inserted.");
         }
         finally
         {

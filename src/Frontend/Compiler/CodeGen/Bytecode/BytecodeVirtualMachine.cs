@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Net;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -31,6 +33,8 @@ public sealed class BytecodeVirtualMachine
             B = instruction.B;
             C = instruction.C;
             D = instruction.D;
+            E = instruction.E;
+            F = instruction.F;
             ConstantRight = constantRight;
         }
 
@@ -43,6 +47,10 @@ public sealed class BytecodeVirtualMachine
         public readonly int C;
 
         public readonly int D;
+
+        public readonly int E;
+
+        public readonly int F;
 
         public readonly long ConstantRight;
     }
@@ -62,9 +70,41 @@ public sealed class BytecodeVirtualMachine
         public bool[]? ConstantBoolFlags { get; init; }
     }
 
+    private sealed class HttpClientSession
+    {
+        public required string BaseUrl { get; init; }
+
+        public required long TimeoutMs { get; set; }
+
+        public required bool AllowRedirects { get; set; }
+
+        public required long MaxRedirects { get; set; }
+
+        public required string UserAgent { get; set; }
+
+        public required string DefaultHeaders { get; set; }
+
+        public required string ProxyUrl { get; set; }
+
+        public required long MaxRetries { get; set; }
+
+        public required long RetryDelayMs { get; set; }
+
+        public required long RequestsSent { get; set; }
+
+        public required long RetriesUsed { get; set; }
+    }
+
     private static readonly object FastPathCacheLock = new();
     private static readonly Dictionary<BytecodeFunction, IntegerFastPathProgram> FastPathCache = new(ReferenceEqualityComparer.Instance);
     private static readonly HashSet<BytecodeFunction> UnsupportedFastPathFunctions = new(ReferenceEqualityComparer.Instance);
+    private const string HttpUserAgent = "oaf-http/0.1";
+    private const string HttpMockGetEnvironmentVariable = "OAF_HTTP_MOCK_GET";
+    private const string HttpMockSendEnvironmentVariable = "OAF_HTTP_MOCK_SEND";
+    private static readonly object HttpClientSessionsLock = new();
+    private static readonly Dictionary<long, HttpClientSession> HttpClientSessions = new();
+    private static long NextHttpClientSessionId = 1;
+    private static readonly HttpClient SharedHttpClient = CreateHttpClient();
 
     public BytecodeExecutionResult Execute(BytecodeProgram program, string? entryFunctionName = null)
     {
@@ -82,6 +122,13 @@ public sealed class BytecodeVirtualMachine
         }
 
         var slots = new object?[Math.Max(function.SlotCount, 1)];
+        var lastHttpStatusCode = 0L;
+        var lastHttpError = string.Empty;
+        var lastHttpReason = string.Empty;
+        var lastHttpContentType = string.Empty;
+        var lastHttpHeaders = string.Empty;
+        var lastHttpBody = string.Empty;
+        var lastHttpHeaderLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var pc = 0;
 
         try
@@ -178,6 +225,210 @@ public sealed class BytecodeVirtualMachine
                         Console.WriteLine(FormatPrintedValue(slots[instruction.A]));
                         pc++;
                         break;
+
+                    case BytecodeOpCode.HttpGet:
+                    {
+                        var url = ToRuntimeString(slots[instruction.B]);
+                        slots[instruction.A] = ExecuteHttpGet(
+                            url,
+                            ref lastHttpStatusCode,
+                            ref lastHttpError,
+                            ref lastHttpReason,
+                            ref lastHttpContentType,
+                            ref lastHttpHeaders,
+                            ref lastHttpBody,
+                            lastHttpHeaderLookup);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpSend:
+                    {
+                        var url = ToRuntimeString(slots[instruction.B]);
+                        var method = slots[instruction.C];
+                        var body = ToRuntimeString(slots[instruction.D]);
+                        var timeoutMs = ToLong(slots[instruction.E]);
+                        var headers = ToRuntimeString(slots[instruction.F]);
+                        slots[instruction.A] = ExecuteHttpSend(
+                            url,
+                            method,
+                            body,
+                            timeoutMs,
+                            headers,
+                            ref lastHttpStatusCode,
+                            ref lastHttpError,
+                            ref lastHttpReason,
+                            ref lastHttpContentType,
+                            ref lastHttpHeaders,
+                            ref lastHttpBody,
+                            lastHttpHeaderLookup);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpHeader:
+                    {
+                        var baseHeaders = ToRuntimeString(slots[instruction.B]);
+                        var headerName = ToRuntimeString(slots[instruction.C]);
+                        var headerValue = ToRuntimeString(slots[instruction.D]);
+                        slots[instruction.A] = ExecuteHttpHeader(baseHeaders, headerName, headerValue);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpQuery:
+                    {
+                        var baseUrl = ToRuntimeString(slots[instruction.B]);
+                        var queryKey = ToRuntimeString(slots[instruction.C]);
+                        var queryValue = ToRuntimeString(slots[instruction.D]);
+                        slots[instruction.A] = ExecuteHttpQuery(baseUrl, queryKey, queryValue);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpUrlEncode:
+                    {
+                        var value = ToRuntimeString(slots[instruction.B]);
+                        slots[instruction.A] = ExecuteHttpUrlEncode(value);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpClientOpen:
+                    {
+                        var baseUrl = ToRuntimeString(slots[instruction.B]);
+                        slots[instruction.A] = ExecuteHttpClientOpen(baseUrl);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpClientConfigure:
+                    {
+                        var client = ToLong(slots[instruction.B]);
+                        var timeoutMs = ToLong(slots[instruction.C]);
+                        var allowRedirects = ToBool(slots[instruction.D]);
+                        var maxRedirects = ToLong(slots[instruction.E]);
+                        var userAgent = ToRuntimeString(slots[instruction.F]);
+                        slots[instruction.A] = ExecuteHttpClientConfigure(client, timeoutMs, allowRedirects, maxRedirects, userAgent);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpClientConfigureRetry:
+                    {
+                        var client = ToLong(slots[instruction.B]);
+                        var maxRetries = ToLong(slots[instruction.C]);
+                        var retryDelayMs = ToLong(slots[instruction.D]);
+                        slots[instruction.A] = ExecuteHttpClientConfigureRetry(client, maxRetries, retryDelayMs);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpClientConfigureProxy:
+                    {
+                        var client = ToLong(slots[instruction.B]);
+                        var proxyUrl = ToRuntimeString(slots[instruction.C]);
+                        slots[instruction.A] = ExecuteHttpClientConfigureProxy(client, proxyUrl);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpClientDefaultHeaders:
+                    {
+                        var client = ToLong(slots[instruction.B]);
+                        var headers = ToRuntimeString(slots[instruction.C]);
+                        slots[instruction.A] = ExecuteHttpClientDefaultHeaders(client, headers);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpClientSend:
+                    {
+                        var client = ToLong(slots[instruction.B]);
+                        var pathOrUrl = ToRuntimeString(slots[instruction.C]);
+                        var method = slots[instruction.D];
+                        var body = ToRuntimeString(slots[instruction.E]);
+                        var headers = ToRuntimeString(slots[instruction.F]);
+                        slots[instruction.A] = ExecuteHttpClientSend(
+                            client,
+                            pathOrUrl,
+                            method,
+                            body,
+                            headers,
+                            ref lastHttpStatusCode,
+                            ref lastHttpError,
+                            ref lastHttpReason,
+                            ref lastHttpContentType,
+                            ref lastHttpHeaders,
+                            ref lastHttpBody,
+                            lastHttpHeaderLookup);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpClientClose:
+                    {
+                        var client = ToLong(slots[instruction.B]);
+                        slots[instruction.A] = ExecuteHttpClientClose(client);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpClientRequestsSent:
+                    {
+                        var client = ToLong(slots[instruction.B]);
+                        slots[instruction.A] = ExecuteHttpClientRequestsSent(client);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpClientRetriesUsed:
+                    {
+                        var client = ToLong(slots[instruction.B]);
+                        slots[instruction.A] = ExecuteHttpClientRetriesUsed(client);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpLastBody:
+                        slots[instruction.A] = lastHttpBody;
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.HttpLastStatus:
+                        slots[instruction.A] = lastHttpStatusCode;
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.HttpLastError:
+                        slots[instruction.A] = lastHttpError;
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.HttpLastReason:
+                        slots[instruction.A] = lastHttpReason;
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.HttpLastContentType:
+                        slots[instruction.A] = lastHttpContentType;
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.HttpLastHeaders:
+                        slots[instruction.A] = lastHttpHeaders;
+                        pc++;
+                        break;
+
+                    case BytecodeOpCode.HttpLastHeader:
+                    {
+                        var headerName = ToRuntimeString(slots[instruction.B]);
+                        slots[instruction.A] = TryGetLastHttpHeaderValue(lastHttpHeaderLookup, headerName, out var headerValue)
+                            ? headerValue
+                            : string.Empty;
+                        pc++;
+                        break;
+                    }
 
                     case BytecodeOpCode.Throw:
                     {
@@ -578,6 +829,55 @@ public sealed class BytecodeVirtualMachine
 
                     case BytecodeOpCode.Print:
                         error = "Jot/print is not supported inside counted paralloop bodies.";
+                        return false;
+
+                    case BytecodeOpCode.HttpHeader:
+                    {
+                        var baseHeaders = ToRuntimeString(slots[instruction.B]);
+                        var headerName = ToRuntimeString(slots[instruction.C]);
+                        var headerValue = ToRuntimeString(slots[instruction.D]);
+                        slots[instruction.A] = ExecuteHttpHeader(baseHeaders, headerName, headerValue);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpQuery:
+                    {
+                        var baseUrl = ToRuntimeString(slots[instruction.B]);
+                        var queryKey = ToRuntimeString(slots[instruction.C]);
+                        var queryValue = ToRuntimeString(slots[instruction.D]);
+                        slots[instruction.A] = ExecuteHttpQuery(baseUrl, queryKey, queryValue);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpUrlEncode:
+                    {
+                        var value = ToRuntimeString(slots[instruction.B]);
+                        slots[instruction.A] = ExecuteHttpUrlEncode(value);
+                        pc++;
+                        break;
+                    }
+
+                    case BytecodeOpCode.HttpGet:
+                    case BytecodeOpCode.HttpSend:
+                    case BytecodeOpCode.HttpClientOpen:
+                    case BytecodeOpCode.HttpClientConfigure:
+                    case BytecodeOpCode.HttpClientConfigureRetry:
+                    case BytecodeOpCode.HttpClientConfigureProxy:
+                    case BytecodeOpCode.HttpClientDefaultHeaders:
+                    case BytecodeOpCode.HttpClientSend:
+                    case BytecodeOpCode.HttpClientClose:
+                    case BytecodeOpCode.HttpClientRequestsSent:
+                    case BytecodeOpCode.HttpClientRetriesUsed:
+                    case BytecodeOpCode.HttpLastBody:
+                    case BytecodeOpCode.HttpLastStatus:
+                    case BytecodeOpCode.HttpLastError:
+                    case BytecodeOpCode.HttpLastReason:
+                    case BytecodeOpCode.HttpLastContentType:
+                    case BytecodeOpCode.HttpLastHeaders:
+                    case BytecodeOpCode.HttpLastHeader:
+                        error = "HTTP intrinsics are not supported inside counted paralloop bodies.";
                         return false;
 
                     case BytecodeOpCode.Throw:
@@ -1154,6 +1454,948 @@ public sealed class BytecodeVirtualMachine
         };
     }
 
+    private static HttpClient CreateHttpClient()
+    {
+        var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(30)
+        };
+
+        return client;
+    }
+
+    private static string ExecuteHttpGet(
+        string url,
+        ref long lastStatusCode,
+        ref string lastError,
+        ref string lastReason,
+        ref string lastContentType,
+        ref string lastHeaders,
+        ref string lastBody,
+        Dictionary<string, string> lastHeaderLookup)
+    {
+        if (TryGetMockHttpResponse(
+                HttpMockGetEnvironmentVariable,
+                out var mockStatusCode,
+                out var mockBody,
+                out var mockError,
+                out var mockReason,
+                out var mockContentType,
+                out var mockHeaders,
+                lastHeaderLookup))
+        {
+            lastStatusCode = mockStatusCode;
+            lastError = mockError;
+            lastReason = mockReason;
+            lastContentType = mockContentType;
+            lastHeaders = mockHeaders;
+            lastBody = mockBody;
+            return mockBody;
+        }
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            lastStatusCode = 0;
+            lastError = "HttpGet url cannot be empty.";
+            lastReason = string.Empty;
+            lastContentType = string.Empty;
+            lastHeaders = string.Empty;
+            lastBody = string.Empty;
+            lastHeaderLookup.Clear();
+            return string.Empty;
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.UserAgent.ParseAdd(HttpUserAgent);
+            using var response = SharedHttpClient.Send(request);
+            var body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            lastStatusCode = (long)response.StatusCode;
+            lastError = string.Empty;
+            CaptureResponseMetadata(response, ref lastReason, ref lastContentType, ref lastHeaders, lastHeaderLookup);
+            lastBody = body;
+            return body;
+        }
+        catch (Exception ex)
+        {
+            lastStatusCode = 0;
+            lastError = ex.Message;
+            lastReason = string.Empty;
+            lastContentType = string.Empty;
+            lastHeaders = string.Empty;
+            lastBody = string.Empty;
+            lastHeaderLookup.Clear();
+            return string.Empty;
+        }
+    }
+
+    private static string ExecuteHttpSend(
+        string url,
+        object? methodValue,
+        string body,
+        long timeoutMs,
+        string requestHeaders,
+        ref long lastStatusCode,
+        ref string lastError,
+        ref string lastReason,
+        ref string lastContentType,
+        ref string lastHeaders,
+        ref string lastBody,
+        Dictionary<string, string> lastHeaderLookup)
+    {
+        return ExecuteHttpRequest(
+            url,
+            methodValue,
+            body,
+            timeoutMs,
+            requestHeaders,
+            "HttpSend",
+            HttpUserAgent,
+            allowRedirects: true,
+            maxRedirects: 10,
+            proxyUrl: string.Empty,
+            ref lastStatusCode,
+            ref lastError,
+            ref lastReason,
+            ref lastContentType,
+            ref lastHeaders,
+            ref lastBody,
+            lastHeaderLookup);
+    }
+
+    private static string ExecuteHttpHeader(string headers, string name, string value)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return headers ?? string.Empty;
+        }
+
+        var line = $"{name.Trim()}: {value}";
+        var normalized = (headers ?? string.Empty).TrimEnd('\r', '\n');
+        return normalized.Length == 0 ? line : $"{normalized}\n{line}";
+    }
+
+    private static string ExecuteHttpQuery(string url, string key, string value)
+    {
+        if (string.IsNullOrEmpty(url))
+        {
+            return string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return url;
+        }
+
+        var fragment = string.Empty;
+        var fragmentIndex = url.IndexOf('#');
+        var baseUrl = url;
+        if (fragmentIndex >= 0)
+        {
+            baseUrl = url[..fragmentIndex];
+            fragment = url[fragmentIndex..];
+        }
+
+        var encodedKey = ExecuteHttpUrlEncode(key);
+        var encodedValue = ExecuteHttpUrlEncode(value ?? string.Empty);
+        var delimiter = baseUrl.Contains('?', StringComparison.Ordinal)
+            ? (baseUrl.EndsWith("?", StringComparison.Ordinal) || baseUrl.EndsWith("&", StringComparison.Ordinal) ? string.Empty : "&")
+            : "?";
+        return $"{baseUrl}{delimiter}{encodedKey}={encodedValue}{fragment}";
+    }
+
+    private static string ExecuteHttpUrlEncode(string value)
+    {
+        return string.IsNullOrEmpty(value) ? string.Empty : Uri.EscapeDataString(value);
+    }
+
+    private static long ExecuteHttpClientOpen(string baseUrl)
+    {
+        lock (HttpClientSessionsLock)
+        {
+            var id = NextHttpClientSessionId++;
+            HttpClientSessions[id] = new HttpClientSession
+            {
+                BaseUrl = baseUrl ?? string.Empty,
+                TimeoutMs = 30_000,
+                AllowRedirects = true,
+                MaxRedirects = 10,
+                UserAgent = HttpUserAgent,
+                DefaultHeaders = string.Empty,
+                ProxyUrl = string.Empty,
+                MaxRetries = 0,
+                RetryDelayMs = 200,
+                RequestsSent = 0,
+                RetriesUsed = 0
+            };
+            return id;
+        }
+    }
+
+    private static long ExecuteHttpClientConfigure(
+        long clientId,
+        long timeoutMs,
+        bool allowRedirects,
+        long maxRedirects,
+        string userAgent)
+    {
+        lock (HttpClientSessionsLock)
+        {
+            if (!HttpClientSessions.TryGetValue(clientId, out var session))
+            {
+                return 0;
+            }
+
+            session.TimeoutMs = timeoutMs <= 0 ? 30_000 : timeoutMs;
+            if (session.TimeoutMs > int.MaxValue)
+            {
+                session.TimeoutMs = int.MaxValue;
+            }
+
+            session.AllowRedirects = allowRedirects;
+            session.MaxRedirects = maxRedirects <= 0 ? 10 : maxRedirects;
+            if (session.MaxRedirects > int.MaxValue)
+            {
+                session.MaxRedirects = int.MaxValue;
+            }
+
+            session.UserAgent = userAgent ?? string.Empty;
+            return 1;
+        }
+    }
+
+    private static long ExecuteHttpClientDefaultHeaders(long clientId, string headers)
+    {
+        lock (HttpClientSessionsLock)
+        {
+            if (!HttpClientSessions.TryGetValue(clientId, out var session))
+            {
+                return 0;
+            }
+
+            session.DefaultHeaders = headers ?? string.Empty;
+            return 1;
+        }
+    }
+
+    private static long ExecuteHttpClientConfigureRetry(long clientId, long maxRetries, long retryDelayMs)
+    {
+        lock (HttpClientSessionsLock)
+        {
+            if (!HttpClientSessions.TryGetValue(clientId, out var session))
+            {
+                return 0;
+            }
+
+            session.MaxRetries = maxRetries < 0 ? 0 : maxRetries;
+            if (session.MaxRetries > int.MaxValue)
+            {
+                session.MaxRetries = int.MaxValue;
+            }
+
+            session.RetryDelayMs = retryDelayMs < 0 ? 0 : retryDelayMs;
+            if (session.RetryDelayMs > int.MaxValue)
+            {
+                session.RetryDelayMs = int.MaxValue;
+            }
+
+            return 1;
+        }
+    }
+
+    private static long ExecuteHttpClientConfigureProxy(long clientId, string proxyUrl)
+    {
+        lock (HttpClientSessionsLock)
+        {
+            if (!HttpClientSessions.TryGetValue(clientId, out var session))
+            {
+                return 0;
+            }
+
+            var normalized = proxyUrl?.Trim() ?? string.Empty;
+            if (normalized.Length > 0 && !Uri.TryCreate(normalized, UriKind.Absolute, out _))
+            {
+                return 0;
+            }
+
+            session.ProxyUrl = normalized;
+            return 1;
+        }
+    }
+
+    private static long ExecuteHttpClientClose(long clientId)
+    {
+        lock (HttpClientSessionsLock)
+        {
+            return HttpClientSessions.Remove(clientId) ? 1 : 0;
+        }
+    }
+
+    private static long ExecuteHttpClientRequestsSent(long clientId)
+    {
+        lock (HttpClientSessionsLock)
+        {
+            return HttpClientSessions.TryGetValue(clientId, out var session) ? session.RequestsSent : 0;
+        }
+    }
+
+    private static long ExecuteHttpClientRetriesUsed(long clientId)
+    {
+        lock (HttpClientSessionsLock)
+        {
+            return HttpClientSessions.TryGetValue(clientId, out var session) ? session.RetriesUsed : 0;
+        }
+    }
+
+    private static string ExecuteHttpClientSend(
+        long clientId,
+        string pathOrUrl,
+        object? methodValue,
+        string body,
+        string requestHeaders,
+        ref long lastStatusCode,
+        ref string lastError,
+        ref string lastReason,
+        ref string lastContentType,
+        ref string lastHeaders,
+        ref string lastBody,
+        Dictionary<string, string> lastHeaderLookup)
+    {
+        if (!TryGetHttpClientSessionSnapshot(clientId, out var session))
+        {
+            lastStatusCode = 0;
+            lastError = "HttpClientSend client is not open.";
+            lastReason = string.Empty;
+            lastContentType = string.Empty;
+            lastHeaders = string.Empty;
+            lastBody = string.Empty;
+            lastHeaderLookup.Clear();
+            return string.Empty;
+        }
+
+        if (!TryBuildClientRequestUrl(session.BaseUrl, pathOrUrl, out var url, out var urlError))
+        {
+            lastStatusCode = 0;
+            lastError = urlError;
+            lastReason = string.Empty;
+            lastContentType = string.Empty;
+            lastHeaders = string.Empty;
+            lastBody = string.Empty;
+            lastHeaderLookup.Clear();
+            return string.Empty;
+        }
+
+        var mergedHeaders = MergeHeaderText(session.DefaultHeaders, requestHeaders);
+        var maxRetries = session.MaxRetries < 0 ? 0 : session.MaxRetries;
+        var retryDelayMs = session.RetryDelayMs < 0 ? 0 : session.RetryDelayMs;
+        var attempts = 0L;
+        var retriesUsed = 0L;
+        var responseBody = string.Empty;
+
+        for (var attempt = 0L; ; attempt++)
+        {
+            attempts++;
+            responseBody = ExecuteHttpRequest(
+                url,
+                methodValue,
+                body,
+                session.TimeoutMs,
+                mergedHeaders,
+                "HttpClientSend",
+                session.UserAgent,
+                session.AllowRedirects,
+                session.MaxRedirects,
+                session.ProxyUrl,
+                ref lastStatusCode,
+                ref lastError,
+                ref lastReason,
+                ref lastContentType,
+                ref lastHeaders,
+                ref lastBody,
+                lastHeaderLookup);
+
+            if (attempt >= maxRetries || !ShouldRetryHttpRequest(lastStatusCode, lastError))
+            {
+                break;
+            }
+
+            retriesUsed++;
+            if (retryDelayMs > 0)
+            {
+                Thread.Sleep((int)Math.Min(retryDelayMs, int.MaxValue));
+            }
+        }
+
+        RecordHttpClientSessionStats(clientId, attempts, retriesUsed);
+        return responseBody;
+    }
+
+    private static void RecordHttpClientSessionStats(long clientId, long attempts, long retriesUsed)
+    {
+        if (attempts <= 0 && retriesUsed <= 0)
+        {
+            return;
+        }
+
+        lock (HttpClientSessionsLock)
+        {
+            if (!HttpClientSessions.TryGetValue(clientId, out var session))
+            {
+                return;
+            }
+
+            if (attempts > 0)
+            {
+                session.RequestsSent = unchecked(session.RequestsSent + attempts);
+            }
+
+            if (retriesUsed > 0)
+            {
+                session.RetriesUsed = unchecked(session.RetriesUsed + retriesUsed);
+            }
+        }
+    }
+
+    private static bool TryGetHttpClientSessionSnapshot(long clientId, out HttpClientSession session)
+    {
+        lock (HttpClientSessionsLock)
+        {
+            if (!HttpClientSessions.TryGetValue(clientId, out var found))
+            {
+                session = null!;
+                return false;
+            }
+
+            session = new HttpClientSession
+            {
+                BaseUrl = found.BaseUrl,
+                TimeoutMs = found.TimeoutMs,
+                AllowRedirects = found.AllowRedirects,
+                MaxRedirects = found.MaxRedirects,
+                UserAgent = found.UserAgent,
+                DefaultHeaders = found.DefaultHeaders,
+                ProxyUrl = found.ProxyUrl,
+                MaxRetries = found.MaxRetries,
+                RetryDelayMs = found.RetryDelayMs,
+                RequestsSent = found.RequestsSent,
+                RetriesUsed = found.RetriesUsed
+            };
+            return true;
+        }
+    }
+
+    private static bool TryBuildClientRequestUrl(string baseUrl, string pathOrUrl, out string url, out string error)
+    {
+        url = string.Empty;
+        error = string.Empty;
+
+        var target = pathOrUrl ?? string.Empty;
+        if (Uri.TryCreate(target, UriKind.Absolute, out var absolute)
+            && (absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps))
+        {
+            url = absolute.ToString();
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            error = "HttpClientSend base URL is empty for relative path.";
+            return false;
+        }
+
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
+        {
+            error = "HttpClientSend base URL is not a valid absolute URI.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            url = baseUri.ToString();
+            return true;
+        }
+
+        if (!Uri.TryCreate(baseUri, target, out var combined))
+        {
+            error = "HttpClientSend path_or_url is not valid.";
+            return false;
+        }
+
+        url = combined.ToString();
+        return true;
+    }
+
+    private static string MergeHeaderText(string defaultHeaders, string requestHeaders)
+    {
+        var left = (defaultHeaders ?? string.Empty).Trim();
+        var right = (requestHeaders ?? string.Empty).Trim();
+        if (left.Length == 0)
+        {
+            return right;
+        }
+
+        if (right.Length == 0)
+        {
+            return left;
+        }
+
+        return $"{left}\n{right}";
+    }
+
+    private static string ExecuteHttpRequest(
+        string url,
+        object? methodValue,
+        string body,
+        long timeoutMs,
+        string requestHeaders,
+        string operationName,
+        string userAgent,
+        bool allowRedirects,
+        long maxRedirects,
+        string proxyUrl,
+        ref long lastStatusCode,
+        ref string lastError,
+        ref string lastReason,
+        ref string lastContentType,
+        ref string lastHeaders,
+        ref string lastBody,
+        Dictionary<string, string> lastHeaderLookup)
+    {
+        if (TryGetMockHttpResponse(
+                HttpMockSendEnvironmentVariable,
+                out var mockStatusCode,
+                out var mockBody,
+                out var mockError,
+                out var mockReason,
+                out var mockContentType,
+                out var mockHeaders,
+                lastHeaderLookup))
+        {
+            lastStatusCode = mockStatusCode;
+            lastError = mockError;
+            lastReason = mockReason;
+            lastContentType = mockContentType;
+            lastHeaders = mockHeaders;
+            lastBody = mockBody;
+            return mockBody;
+        }
+
+        if (TryGetMockHttpResponse(
+                HttpMockGetEnvironmentVariable,
+                out mockStatusCode,
+                out mockBody,
+                out mockError,
+                out mockReason,
+                out mockContentType,
+                out mockHeaders,
+                lastHeaderLookup))
+        {
+            lastStatusCode = mockStatusCode;
+            lastError = mockError;
+            lastReason = mockReason;
+            lastContentType = mockContentType;
+            lastHeaders = mockHeaders;
+            lastBody = mockBody;
+            return mockBody;
+        }
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            lastStatusCode = 0;
+            lastError = $"{operationName} url cannot be empty.";
+            lastReason = string.Empty;
+            lastContentType = string.Empty;
+            lastHeaders = string.Empty;
+            lastBody = string.Empty;
+            lastHeaderLookup.Clear();
+            return string.Empty;
+        }
+
+        var method = ResolveHttpMethod(methodValue);
+        if (method is null)
+        {
+            lastStatusCode = 0;
+            lastError = $"{operationName} method is not recognized.";
+            lastReason = string.Empty;
+            lastContentType = string.Empty;
+            lastHeaders = string.Empty;
+            lastBody = string.Empty;
+            lastHeaderLookup.Clear();
+            return string.Empty;
+        }
+
+        var effectiveTimeoutMs = timeoutMs <= 0 ? 30_000 : timeoutMs;
+        if (effectiveTimeoutMs > int.MaxValue)
+        {
+            effectiveTimeoutMs = int.MaxValue;
+        }
+
+        var effectiveMaxRedirects = maxRedirects <= 0 ? 10 : maxRedirects;
+        if (effectiveMaxRedirects > int.MaxValue)
+        {
+            effectiveMaxRedirects = int.MaxValue;
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource((int)effectiveTimeoutMs);
+            using var handler = new HttpClientHandler
+            {
+                AllowAutoRedirect = allowRedirects,
+                MaxAutomaticRedirections = (int)effectiveMaxRedirects
+            };
+            if (!string.IsNullOrWhiteSpace(proxyUrl))
+            {
+                handler.Proxy = new WebProxy(proxyUrl);
+                handler.UseProxy = true;
+            }
+
+            using var client = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromMilliseconds((int)effectiveTimeoutMs)
+            };
+            using var request = new HttpRequestMessage(method, url);
+            if (!string.IsNullOrWhiteSpace(userAgent))
+            {
+                request.Headers.UserAgent.ParseAdd(userAgent);
+            }
+
+            if (!string.IsNullOrEmpty(body) && method != HttpMethod.Get && method != HttpMethod.Head)
+            {
+                request.Content = new StringContent(body);
+            }
+
+            if (!TryApplyRequestHeaders(request, method, body, requestHeaders, operationName, out var headerError))
+            {
+                lastStatusCode = 0;
+                lastError = headerError;
+                lastReason = string.Empty;
+                lastContentType = string.Empty;
+                lastHeaders = string.Empty;
+                lastBody = string.Empty;
+                lastHeaderLookup.Clear();
+                return string.Empty;
+            }
+
+            using var response = client.Send(request, cts.Token);
+            var responseBody = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            lastStatusCode = (long)response.StatusCode;
+            lastError = string.Empty;
+            CaptureResponseMetadata(response, ref lastReason, ref lastContentType, ref lastHeaders, lastHeaderLookup);
+            lastBody = responseBody;
+            return responseBody;
+        }
+        catch (Exception ex)
+        {
+            lastStatusCode = 0;
+            lastError = ex.Message;
+            lastReason = string.Empty;
+            lastContentType = string.Empty;
+            lastHeaders = string.Empty;
+            lastBody = string.Empty;
+            lastHeaderLookup.Clear();
+            return string.Empty;
+        }
+    }
+
+    private static bool ShouldRetryHttpRequest(long statusCode, string error)
+    {
+        if (statusCode == 408 || statusCode == 429 || statusCode >= 500)
+        {
+            return true;
+        }
+
+        if (statusCode != 0 || string.IsNullOrWhiteSpace(error))
+        {
+            return false;
+        }
+
+        var normalized = error.ToLowerInvariant();
+        return normalized.Contains("timeout", StringComparison.Ordinal)
+            || normalized.Contains("timed out", StringComparison.Ordinal)
+            || normalized.Contains("temporarily", StringComparison.Ordinal)
+            || normalized.Contains("connection", StringComparison.Ordinal)
+            || normalized.Contains("refused", StringComparison.Ordinal)
+            || normalized.Contains("reset", StringComparison.Ordinal)
+            || normalized.Contains("unreachable", StringComparison.Ordinal)
+            || normalized.Contains("name or service", StringComparison.Ordinal)
+            || normalized.Contains("dns", StringComparison.Ordinal)
+            || normalized.Contains("could not be resolved", StringComparison.Ordinal);
+    }
+
+    private static bool TryApplyRequestHeaders(
+        HttpRequestMessage request,
+        HttpMethod method,
+        string body,
+        string flattenedHeaders,
+        string operationName,
+        out string error)
+    {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(flattenedHeaders))
+        {
+            return true;
+        }
+
+        if (!TryParseHeaderLines(flattenedHeaders, operationName, out var parsedHeaders, out error))
+        {
+            return false;
+        }
+
+        foreach (var (headerName, headerValue) in parsedHeaders)
+        {
+            if (string.Equals(headerName, "User-Agent", StringComparison.OrdinalIgnoreCase))
+            {
+                request.Headers.Remove("User-Agent");
+            }
+
+            if (request.Headers.TryAddWithoutValidation(headerName, headerValue))
+            {
+                continue;
+            }
+
+            if (request.Content is null && method != HttpMethod.Get && method != HttpMethod.Head)
+            {
+                request.Content = new StringContent(body ?? string.Empty);
+            }
+
+            if (request.Content is not null && request.Content.Headers.TryAddWithoutValidation(headerName, headerValue))
+            {
+                continue;
+            }
+
+            error = $"{operationName} header '{headerName}' is not valid for this request.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryParseHeaderLines(
+        string flattenedHeaders,
+        string operationName,
+        out List<(string Name, string Value)> headers,
+        out string error)
+    {
+        headers = new List<(string Name, string Value)>();
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(flattenedHeaders))
+        {
+            return true;
+        }
+
+        var normalizedHeaders = flattenedHeaders
+            .Replace("\\r", "\r", StringComparison.Ordinal)
+            .Replace("\\n", "\n", StringComparison.Ordinal)
+            .Replace("\r", string.Empty, StringComparison.Ordinal);
+        var lines = normalizedHeaders.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            var separatorIndex = line.IndexOf(':');
+            if (separatorIndex <= 0)
+            {
+                error = $"{operationName} headers must use 'Name: Value' per line.";
+                return false;
+            }
+
+            var key = line[..separatorIndex].Trim();
+            var value = line[(separatorIndex + 1)..].Trim();
+            if (key.Length == 0)
+            {
+                error = $"{operationName} headers must include a non-empty header name.";
+                return false;
+            }
+
+            headers.Add((key, value));
+        }
+
+        return true;
+    }
+
+    private static bool TryGetMockHttpResponse(
+        string variableName,
+        out long statusCode,
+        out string body,
+        out string error,
+        out string reason,
+        out string contentType,
+        out string headers,
+        Dictionary<string, string> headerLookup)
+    {
+        statusCode = 0;
+        body = string.Empty;
+        error = string.Empty;
+        reason = string.Empty;
+        contentType = string.Empty;
+        headers = string.Empty;
+        headerLookup.Clear();
+
+        var mockValue = Environment.GetEnvironmentVariable(variableName);
+        if (string.IsNullOrWhiteSpace(mockValue))
+        {
+            return false;
+        }
+
+        var parts = mockValue.Split('|', 6, StringSplitOptions.None);
+        if (parts.Length > 0 && long.TryParse(parts[0], out var parsedStatus))
+        {
+            statusCode = parsedStatus;
+        }
+
+        if (parts.Length > 1)
+        {
+            body = parts[1];
+        }
+
+        if (parts.Length > 2)
+        {
+            error = parts[2];
+        }
+
+        if (parts.Length > 3)
+        {
+            reason = parts[3];
+        }
+
+        if (parts.Length > 4)
+        {
+            contentType = parts[4];
+        }
+
+        if (parts.Length > 5)
+        {
+            headers = UnescapeMockHeaderText(parts[5]);
+            PopulateHeaderLookupFromFlattened(headers, headerLookup);
+        }
+
+        return true;
+    }
+
+    private static void CaptureResponseMetadata(
+        HttpResponseMessage response,
+        ref string reason,
+        ref string contentType,
+        ref string headers,
+        Dictionary<string, string> headerLookup)
+    {
+        reason = response.ReasonPhrase ?? string.Empty;
+        contentType = response.Content.Headers.ContentType?.ToString() ?? string.Empty;
+        headerLookup.Clear();
+        var lines = new List<string>();
+
+        foreach (var header in response.Headers)
+        {
+            var value = string.Join(", ", header.Value);
+            lines.Add($"{header.Key}: {value}");
+            headerLookup[header.Key] = value;
+        }
+
+        foreach (var header in response.Content.Headers)
+        {
+            var value = string.Join(", ", header.Value);
+            lines.Add($"{header.Key}: {value}");
+            headerLookup[header.Key] = value;
+        }
+
+        headers = string.Join("\n", lines);
+    }
+
+    private static void PopulateHeaderLookupFromFlattened(string flattenedHeaders, Dictionary<string, string> headerLookup)
+    {
+        if (string.IsNullOrWhiteSpace(flattenedHeaders))
+        {
+            return;
+        }
+
+        var lines = flattenedHeaders.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            var separatorIndex = line.IndexOf(':');
+            if (separatorIndex <= 0 || separatorIndex == line.Length - 1)
+            {
+                continue;
+            }
+
+            var key = line[..separatorIndex].Trim();
+            var value = line[(separatorIndex + 1)..].Trim();
+            if (key.Length > 0)
+            {
+                headerLookup[key] = value;
+            }
+        }
+    }
+
+    private static string UnescapeMockHeaderText(string text)
+    {
+        return text.Replace("\\r", "\r", StringComparison.Ordinal)
+            .Replace("\\n", "\n", StringComparison.Ordinal);
+    }
+
+    private static bool TryGetLastHttpHeaderValue(
+        IReadOnlyDictionary<string, string> headerLookup,
+        string headerName,
+        out string value)
+    {
+        if (string.IsNullOrWhiteSpace(headerName))
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        return headerLookup.TryGetValue(headerName.Trim(), out value!);
+    }
+
+    private static HttpMethod? ResolveHttpMethod(object? methodValue)
+    {
+        if (methodValue is null)
+        {
+            return null;
+        }
+
+        if (methodValue is string text)
+        {
+            return text.Trim().ToUpperInvariant() switch
+            {
+                "GET" => HttpMethod.Get,
+                "POST" => HttpMethod.Post,
+                "PUT" => HttpMethod.Put,
+                "DELETE" => HttpMethod.Delete,
+                "PATCH" => HttpMethod.Patch,
+                "HEAD" => HttpMethod.Head,
+                "OPTIONS" => HttpMethod.Options,
+                _ => null
+            };
+        }
+
+        var numeric = ToLong(methodValue);
+        return numeric switch
+        {
+            0 => HttpMethod.Get,
+            1 => HttpMethod.Post,
+            2 => HttpMethod.Put,
+            3 => HttpMethod.Delete,
+            4 => HttpMethod.Patch,
+            5 => HttpMethod.Head,
+            6 => HttpMethod.Options,
+            _ => null
+        };
+    }
+
     private static object? EvaluateUnary(BytecodeUnaryOperator operation, object? operand)
     {
         return operation switch
@@ -1410,6 +2652,17 @@ public sealed class BytecodeVirtualMachine
             null => "null",
             bool boolean => boolean ? "true" : "false",
             _ => value.ToString() ?? "null"
+        };
+    }
+
+    private static string ToRuntimeString(object? value)
+    {
+        return value switch
+        {
+            null => string.Empty,
+            string text => text,
+            char ch => ch.ToString(),
+            _ => value.ToString() ?? string.Empty
         };
     }
 

@@ -14,6 +14,7 @@ public static class ParserTests
             ("parses_type_declarations", ParsesTypeDeclarations),
             ("parses_typed_variable_declaration", ParsesTypedVariableDeclaration),
             ("parses_constructor_expression_with_bracket_arguments", ParsesConstructorExpressionWithBracketArguments),
+            ("parses_http_intrinsic_constructor_expressions", ParsesHttpIntrinsicConstructorExpressions),
             ("parses_explicit_cast_expression", ParsesExplicitCastExpression),
             ("keeps_parenthesized_expression_distinct_from_cast", KeepsParenthesizedExpressionDistinctFromCast),
             ("parses_arrow_body_without_double_semicolon", ParsesArrowBodyWithoutDoubleSemicolon),
@@ -104,6 +105,163 @@ public static class ParserTests
         var constructor = (ConstructorExpressionSyntax)declaration.Initializer;
         TestAssertions.Equal("Point", constructor.TargetType.Name);
         TestAssertions.Equal(2, constructor.Arguments.Count);
+    }
+
+    private static void ParsesHttpIntrinsicConstructorExpressions()
+    {
+        const string source = "body = HttpGet[\"http://example.com\"]; send = HttpSend[\"http://example.com\", 1, \"name=oaf\", 5000, \"Accept: application/json\\nX-Debug: 1\"]; status = HttpLastStatus[]; error = HttpLastError[]; reason = HttpLastReason[]; ct = HttpLastContentType[]; hs = HttpLastHeaders[]; server = HttpLastHeader[\"Server\"]; hb = HttpHeader[\"\", \"Accept\", \"application/json\"]; q = HttpQuery[\"https://api.example.com/search\", \"q\", \"bakery in berlin\"]; enc = HttpUrlEncode[\"bakery in berlin\"]; lastBody = HttpLastBody[]; client = HttpClientOpen[\"https://api.example.com\"]; cfg = HttpClientConfigure[client, 9000, true, 6, \"oaf-http/1.0\"]; retryCfg = HttpClientConfigureRetry[client, 2, 100]; proxyCfg = HttpClientConfigureProxy[client, \"\"]; defs = HttpClientDefaultHeaders[client, \"Authorization: Bearer t\"]; resp = HttpClientSend[client, \"/search\", 0, \"\", \"Accept: application/json\"]; sentCount = HttpClientRequestsSent[client]; retryCount = HttpClientRetriesUsed[client]; closed = HttpClientClose[client];";
+        var parser = new Frontend.Compiler.Parser.Parser(source);
+        var unit = parser.ParseCompilationUnit();
+
+        TestAssertions.False(parser.Diagnostics.HasErrors, "Expected HTTP intrinsic constructor expressions to parse.");
+        TestAssertions.Equal(21, unit.Statements.Count);
+
+        var bodyDecl = unit.Statements[0] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(bodyDecl is not null, "Expected first statement to be declaration.");
+        TestAssertions.True(bodyDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpGet constructor expression.");
+        var bodyCtor = (ConstructorExpressionSyntax)bodyDecl.Initializer;
+        TestAssertions.Equal("HttpGet", bodyCtor.TargetType.Name);
+        TestAssertions.Equal(1, bodyCtor.Arguments.Count);
+
+        var sendDecl = unit.Statements[1] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(sendDecl is not null, "Expected second statement to be declaration.");
+        TestAssertions.True(sendDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpSend constructor expression.");
+        var sendCtor = (ConstructorExpressionSyntax)sendDecl.Initializer;
+        TestAssertions.Equal("HttpSend", sendCtor.TargetType.Name);
+        TestAssertions.Equal(5, sendCtor.Arguments.Count);
+
+        var statusDecl = unit.Statements[2] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(statusDecl is not null, "Expected third statement to be declaration.");
+        TestAssertions.True(statusDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpLastStatus constructor expression.");
+        var statusCtor = (ConstructorExpressionSyntax)statusDecl.Initializer;
+        TestAssertions.Equal("HttpLastStatus", statusCtor.TargetType.Name);
+        TestAssertions.Equal(0, statusCtor.Arguments.Count);
+
+        var errorDecl = unit.Statements[3] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(errorDecl is not null, "Expected fourth statement to be declaration.");
+        TestAssertions.True(errorDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpLastError constructor expression.");
+        var errorCtor = (ConstructorExpressionSyntax)errorDecl.Initializer;
+        TestAssertions.Equal("HttpLastError", errorCtor.TargetType.Name);
+        TestAssertions.Equal(0, errorCtor.Arguments.Count);
+
+        var reasonDecl = unit.Statements[4] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(reasonDecl is not null, "Expected fifth statement to be declaration.");
+        TestAssertions.True(reasonDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpLastReason constructor expression.");
+        var reasonCtor = (ConstructorExpressionSyntax)reasonDecl.Initializer;
+        TestAssertions.Equal("HttpLastReason", reasonCtor.TargetType.Name);
+        TestAssertions.Equal(0, reasonCtor.Arguments.Count);
+
+        var contentTypeDecl = unit.Statements[5] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(contentTypeDecl is not null, "Expected sixth statement to be declaration.");
+        TestAssertions.True(contentTypeDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpLastContentType constructor expression.");
+        var contentTypeCtor = (ConstructorExpressionSyntax)contentTypeDecl.Initializer;
+        TestAssertions.Equal("HttpLastContentType", contentTypeCtor.TargetType.Name);
+        TestAssertions.Equal(0, contentTypeCtor.Arguments.Count);
+
+        var headersDecl = unit.Statements[6] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(headersDecl is not null, "Expected seventh statement to be declaration.");
+        TestAssertions.True(headersDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpLastHeaders constructor expression.");
+        var headersCtor = (ConstructorExpressionSyntax)headersDecl.Initializer;
+        TestAssertions.Equal("HttpLastHeaders", headersCtor.TargetType.Name);
+        TestAssertions.Equal(0, headersCtor.Arguments.Count);
+
+        var headerDecl = unit.Statements[7] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(headerDecl is not null, "Expected eighth statement to be declaration.");
+        TestAssertions.True(headerDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpLastHeader constructor expression.");
+        var headerCtor = (ConstructorExpressionSyntax)headerDecl.Initializer;
+        TestAssertions.Equal("HttpLastHeader", headerCtor.TargetType.Name);
+        TestAssertions.Equal(1, headerCtor.Arguments.Count);
+
+        var headerBuilderDecl = unit.Statements[8] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(headerBuilderDecl is not null, "Expected ninth statement to be declaration.");
+        TestAssertions.True(headerBuilderDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpHeader constructor expression.");
+        var headerBuilderCtor = (ConstructorExpressionSyntax)headerBuilderDecl.Initializer;
+        TestAssertions.Equal("HttpHeader", headerBuilderCtor.TargetType.Name);
+        TestAssertions.Equal(3, headerBuilderCtor.Arguments.Count);
+
+        var queryDecl = unit.Statements[9] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(queryDecl is not null, "Expected tenth statement to be declaration.");
+        TestAssertions.True(queryDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpQuery constructor expression.");
+        var queryCtor = (ConstructorExpressionSyntax)queryDecl.Initializer;
+        TestAssertions.Equal("HttpQuery", queryCtor.TargetType.Name);
+        TestAssertions.Equal(3, queryCtor.Arguments.Count);
+
+        var encodeDecl = unit.Statements[10] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(encodeDecl is not null, "Expected eleventh statement to be declaration.");
+        TestAssertions.True(encodeDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpUrlEncode constructor expression.");
+        var encodeCtor = (ConstructorExpressionSyntax)encodeDecl.Initializer;
+        TestAssertions.Equal("HttpUrlEncode", encodeCtor.TargetType.Name);
+        TestAssertions.Equal(1, encodeCtor.Arguments.Count);
+
+        var lastBodyDecl = unit.Statements[11] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(lastBodyDecl is not null, "Expected twelfth statement to be declaration.");
+        TestAssertions.True(lastBodyDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpLastBody constructor expression.");
+        var lastBodyCtor = (ConstructorExpressionSyntax)lastBodyDecl.Initializer;
+        TestAssertions.Equal("HttpLastBody", lastBodyCtor.TargetType.Name);
+        TestAssertions.Equal(0, lastBodyCtor.Arguments.Count);
+
+        var clientDecl = unit.Statements[12] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(clientDecl is not null, "Expected thirteenth statement to be declaration.");
+        TestAssertions.True(clientDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpClientOpen constructor expression.");
+        var clientCtor = (ConstructorExpressionSyntax)clientDecl.Initializer;
+        TestAssertions.Equal("HttpClientOpen", clientCtor.TargetType.Name);
+        TestAssertions.Equal(1, clientCtor.Arguments.Count);
+
+        var configureDecl = unit.Statements[13] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(configureDecl is not null, "Expected fourteenth statement to be declaration.");
+        TestAssertions.True(configureDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpClientConfigure constructor expression.");
+        var configureCtor = (ConstructorExpressionSyntax)configureDecl.Initializer;
+        TestAssertions.Equal("HttpClientConfigure", configureCtor.TargetType.Name);
+        TestAssertions.Equal(5, configureCtor.Arguments.Count);
+
+        var retryConfigDecl = unit.Statements[14] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(retryConfigDecl is not null, "Expected fifteenth statement to be declaration.");
+        TestAssertions.True(retryConfigDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpClientConfigureRetry constructor expression.");
+        var retryConfigCtor = (ConstructorExpressionSyntax)retryConfigDecl.Initializer;
+        TestAssertions.Equal("HttpClientConfigureRetry", retryConfigCtor.TargetType.Name);
+        TestAssertions.Equal(3, retryConfigCtor.Arguments.Count);
+
+        var proxyConfigDecl = unit.Statements[15] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(proxyConfigDecl is not null, "Expected sixteenth statement to be declaration.");
+        TestAssertions.True(proxyConfigDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpClientConfigureProxy constructor expression.");
+        var proxyConfigCtor = (ConstructorExpressionSyntax)proxyConfigDecl.Initializer;
+        TestAssertions.Equal("HttpClientConfigureProxy", proxyConfigCtor.TargetType.Name);
+        TestAssertions.Equal(2, proxyConfigCtor.Arguments.Count);
+
+        var defaultsDecl = unit.Statements[16] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(defaultsDecl is not null, "Expected seventeenth statement to be declaration.");
+        TestAssertions.True(defaultsDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpClientDefaultHeaders constructor expression.");
+        var defaultsCtor = (ConstructorExpressionSyntax)defaultsDecl.Initializer;
+        TestAssertions.Equal("HttpClientDefaultHeaders", defaultsCtor.TargetType.Name);
+        TestAssertions.Equal(2, defaultsCtor.Arguments.Count);
+
+        var clientSendDecl = unit.Statements[17] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(clientSendDecl is not null, "Expected eighteenth statement to be declaration.");
+        TestAssertions.True(clientSendDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpClientSend constructor expression.");
+        var clientSendCtor = (ConstructorExpressionSyntax)clientSendDecl.Initializer;
+        TestAssertions.Equal("HttpClientSend", clientSendCtor.TargetType.Name);
+        TestAssertions.Equal(5, clientSendCtor.Arguments.Count);
+
+        var requestsDecl = unit.Statements[18] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(requestsDecl is not null, "Expected nineteenth statement to be declaration.");
+        TestAssertions.True(requestsDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpClientRequestsSent constructor expression.");
+        var requestsCtor = (ConstructorExpressionSyntax)requestsDecl.Initializer;
+        TestAssertions.Equal("HttpClientRequestsSent", requestsCtor.TargetType.Name);
+        TestAssertions.Equal(1, requestsCtor.Arguments.Count);
+
+        var retriesDecl = unit.Statements[19] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(retriesDecl is not null, "Expected twentieth statement to be declaration.");
+        TestAssertions.True(retriesDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpClientRetriesUsed constructor expression.");
+        var retriesCtor = (ConstructorExpressionSyntax)retriesDecl.Initializer;
+        TestAssertions.Equal("HttpClientRetriesUsed", retriesCtor.TargetType.Name);
+        TestAssertions.Equal(1, retriesCtor.Arguments.Count);
+
+        var closeDecl = unit.Statements[20] as VariableDeclarationStatementSyntax;
+        TestAssertions.True(closeDecl is not null, "Expected twenty-first statement to be declaration.");
+        TestAssertions.True(closeDecl!.Initializer is ConstructorExpressionSyntax, "Expected HttpClientClose constructor expression.");
+        var closeCtor = (ConstructorExpressionSyntax)closeDecl.Initializer;
+        TestAssertions.Equal("HttpClientClose", closeCtor.TargetType.Name);
+        TestAssertions.Equal(1, closeCtor.Arguments.Count);
     }
 
     private static void ParsesExplicitCastExpression()

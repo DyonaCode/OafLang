@@ -372,92 +372,94 @@ public static class OafPackageManager
         var startDirectory = string.IsNullOrWhiteSpace(searchDirectory)
             ? Directory.GetCurrentDirectory()
             : Path.GetFullPath(searchDirectory);
-        var packageContext = FindPackageContextDirectory(startDirectory);
-        if (packageContext is null)
-        {
-            return true;
-        }
-
-        var lockPath = Path.Combine(packageContext, DefaultLockFileName);
-        if (!File.Exists(lockPath))
-        {
-            return true;
-        }
-
-        ParsedLockFile parsedLock;
-        try
-        {
-            if (!TryParseLockFile(File.ReadAllText(lockPath), out parsedLock, out var parseError))
-            {
-                message = $"Failed to parse '{lockPath}': {parseError}";
-                return false;
-            }
-        }
-        catch (Exception ex)
-        {
-            message = $"Failed to read '{lockPath}': {ex.Message}";
-            return false;
-        }
-
         var modulesByName = new Dictionary<string, PackageModuleSource>(StringComparer.Ordinal);
-        foreach (var entry in parsedLock.Entries.OrderBy(static item => item.Name, StringComparer.Ordinal))
+        var packageContext = FindPackageContextDirectory(startDirectory);
+        if (packageContext is not null)
         {
-            var contentRoot = Path.Combine(packageContext, ".oaf", "packages", entry.Name, entry.Version, "content");
-            if (!Directory.Exists(contentRoot))
+            var lockPath = Path.Combine(packageContext, DefaultLockFileName);
+            if (File.Exists(lockPath))
             {
-                continue;
-            }
-
-            var files = Directory.GetFiles(contentRoot, "*.oaf", SearchOption.AllDirectories)
-                .OrderBy(static path => path, StringComparer.Ordinal);
-            foreach (var file in files)
-            {
-                string source;
+                ParsedLockFile parsedLock;
                 try
                 {
-                    source = File.ReadAllText(file);
+                    if (!TryParseLockFile(File.ReadAllText(lockPath), out parsedLock, out var parseError))
+                    {
+                        message = $"Failed to parse '{lockPath}': {parseError}";
+                        return false;
+                    }
                 }
                 catch (Exception ex)
                 {
-                    message = $"Failed to read package source '{file}': {ex.Message}";
+                    message = $"Failed to read '{lockPath}': {ex.Message}";
                     return false;
                 }
 
-                if (!TryGetExpectedModuleName(contentRoot, file, out var expectedModuleName, out var moduleNameError))
+                foreach (var entry in parsedLock.Entries.OrderBy(static item => item.Name, StringComparer.Ordinal))
                 {
-                    message = $"Invalid package module path '{file}': {moduleNameError}";
-                    return false;
-                }
+                    var contentRoot = Path.Combine(packageContext, ".oaf", "packages", entry.Name, entry.Version, "content");
+                    if (!Directory.Exists(contentRoot))
+                    {
+                        continue;
+                    }
 
-                if (!TryReadModuleDescriptor(source, expectedModuleName, out var descriptor, out var descriptorError))
-                {
-                    message = $"Invalid package module file '{file}': {descriptorError}";
-                    return false;
-                }
+                    var files = Directory.GetFiles(contentRoot, "*.oaf", SearchOption.AllDirectories)
+                        .OrderBy(static path => path, StringComparer.Ordinal);
+                    foreach (var file in files)
+                    {
+                        string source;
+                        try
+                        {
+                            source = File.ReadAllText(file);
+                        }
+                        catch (Exception ex)
+                        {
+                            message = $"Failed to read package source '{file}': {ex.Message}";
+                            return false;
+                        }
 
-                var moduleSource = new PackageModuleSource(descriptor.ModuleName, descriptor.Imports, source, file);
-                if (modulesByName.TryGetValue(moduleSource.ModuleName, out var existing))
-                {
-                    message = $"Duplicate module '{moduleSource.ModuleName}' found in '{existing.Path}' and '{file}'.";
-                    return false;
-                }
+                        if (!TryGetExpectedModuleName(contentRoot, file, out var expectedModuleName, out var moduleNameError))
+                        {
+                            message = $"Invalid package module path '{file}': {moduleNameError}";
+                            return false;
+                        }
 
-                modulesByName.Add(moduleSource.ModuleName, moduleSource);
+                        if (!TryReadModuleDescriptor(source, expectedModuleName, out var descriptor, out var normalizedSource, out var descriptorError))
+                        {
+                            message = $"Invalid package module file '{file}': {descriptorError}";
+                            return false;
+                        }
+
+                        var moduleSource = new PackageModuleSource(descriptor.ModuleName, descriptor.Imports, normalizedSource, file);
+                        if (modulesByName.TryGetValue(moduleSource.ModuleName, out var existing))
+                        {
+                            message = $"Duplicate module '{moduleSource.ModuleName}' found in '{existing.Path}' and '{file}'.";
+                            return false;
+                        }
+
+                        modulesByName.Add(moduleSource.ModuleName, moduleSource);
+                    }
+                }
             }
         }
 
-        if (modulesByName.Count == 0)
-        {
-            return true;
-        }
-
-        if (!TryReadEntryImports(normalizedEntrySource, out var requestedImports, out var entryError))
+        if (!TryReadEntryImports(normalizedEntrySource, out var requestedImports, out var entryHasModuleDeclaration, out var entryError))
         {
             message = entryError!;
             return false;
         }
 
         if (requestedImports.Count == 0)
+        {
+            return true;
+        }
+
+        if (!TryLoadLocalModulesFromImports(startDirectory, requestedImports, modulesByName, out var localModuleError))
+        {
+            message = localModuleError!;
+            return false;
+        }
+
+        if (modulesByName.Count == 0)
         {
             return true;
         }
@@ -477,6 +479,11 @@ public static class OafPackageManager
 
         if (!string.IsNullOrWhiteSpace(normalizedEntrySource))
         {
+            if (!entryHasModuleDeclaration)
+            {
+                builder.AppendLine("module entry.main;");
+            }
+
             builder.AppendLine(normalizedEntrySource);
         }
 
@@ -487,15 +494,18 @@ public static class OafPackageManager
     private static bool TryReadEntryImports(
         string source,
         out List<string> imports,
+        out bool hasModuleDeclaration,
         out string? error)
     {
         imports = [];
+        hasModuleDeclaration = false;
         error = null;
 
         try
         {
             var parser = new Parser(source);
             var unit = parser.ParseCompilationUnit();
+            hasModuleDeclaration = unit.Statements.OfType<ModuleDeclarationStatementSyntax>().Any();
             imports = unit.Statements
                 .OfType<ImportStatementSyntax>()
                 .Select(static statement => statement.ModuleName)
@@ -515,9 +525,11 @@ public static class OafPackageManager
         string source,
         string expectedModuleName,
         out PackageModuleDescriptor descriptor,
+        out string normalizedSource,
         out string? error)
     {
         descriptor = default;
+        normalizedSource = string.Empty;
         error = null;
 
         try
@@ -528,8 +540,16 @@ public static class OafPackageManager
             var moduleDeclaration = unit.Statements.OfType<ModuleDeclarationStatementSyntax>().FirstOrDefault();
             if (moduleDeclaration is null)
             {
-                error = "module declaration is required (module <name>;).";
-                return false;
+                var inferredImports = unit.Statements
+                    .OfType<ImportStatementSyntax>()
+                    .Select(static statement => statement.ModuleName)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(static name => name, StringComparer.Ordinal)
+                    .ToList();
+
+                descriptor = new PackageModuleDescriptor(expectedModuleName, inferredImports);
+                normalizedSource = $"module {expectedModuleName};{Environment.NewLine}{source}";
+                return true;
             }
 
             if (!string.Equals(moduleDeclaration.ModuleName, expectedModuleName, StringComparison.Ordinal))
@@ -546,6 +566,7 @@ public static class OafPackageManager
                 .ToList();
 
             descriptor = new PackageModuleDescriptor(moduleDeclaration.ModuleName, imports);
+            normalizedSource = source;
             return true;
         }
         catch (Exception ex)
@@ -553,6 +574,91 @@ public static class OafPackageManager
             error = $"Failed to parse module source: {ex.Message}";
             return false;
         }
+    }
+
+    private static bool TryLoadLocalModulesFromImports(
+        string startDirectory,
+        IReadOnlyList<string> requestedImports,
+        Dictionary<string, PackageModuleSource> modulesByName,
+        out string? error)
+    {
+        error = null;
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<string>(requestedImports
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(static name => name, StringComparer.Ordinal));
+
+        while (queue.Count > 0)
+        {
+            var moduleName = queue.Dequeue();
+            if (!visited.Add(moduleName))
+            {
+                continue;
+            }
+
+            if (!TryGetLocalModuleFilePath(startDirectory, moduleName, out var localModulePath))
+            {
+                continue;
+            }
+
+            string source;
+            try
+            {
+                source = File.ReadAllText(localModulePath);
+            }
+            catch (Exception ex)
+            {
+                error = $"Failed to read local module source '{localModulePath}': {ex.Message}";
+                return false;
+            }
+
+            if (!TryReadModuleDescriptor(source, moduleName, out var descriptor, out var normalizedSource, out var descriptorError))
+            {
+                error = $"Invalid local module file '{localModulePath}': {descriptorError}";
+                return false;
+            }
+
+            modulesByName[moduleName] = new PackageModuleSource(
+                descriptor.ModuleName,
+                descriptor.Imports,
+                normalizedSource,
+                localModulePath);
+
+            foreach (var import in descriptor.Imports.OrderBy(static name => name, StringComparer.Ordinal))
+            {
+                if (!visited.Contains(import))
+                {
+                    queue.Enqueue(import);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryGetLocalModuleFilePath(string startDirectory, string moduleName, out string filePath)
+    {
+        filePath = string.Empty;
+        if (string.IsNullOrWhiteSpace(moduleName))
+        {
+            return false;
+        }
+
+        var segments = moduleName.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0 || !segments.All(IsValidModuleIdentifierSegment))
+        {
+            return false;
+        }
+
+        var relativePath = Path.Combine(segments) + ".oaf";
+        var candidatePath = Path.GetFullPath(Path.Combine(startDirectory, relativePath));
+        if (!File.Exists(candidatePath))
+        {
+            return false;
+        }
+
+        filePath = candidatePath;
+        return true;
     }
 
     private static bool TryGetExpectedModuleName(

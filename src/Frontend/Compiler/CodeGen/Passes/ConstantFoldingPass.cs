@@ -87,6 +87,125 @@ public sealed class ConstantFoldingPass : IIrOptimizationPass
                         print.Value = ReplaceKnownConstants(print.Value, knownConstants);
                         break;
 
+                    case IrHttpGetInstruction httpGet:
+                        httpGet.Url = ReplaceKnownConstants(httpGet.Url, knownConstants);
+                        knownConstants.Remove(httpGet.Destination.Name);
+                        break;
+
+                    case IrHttpSendInstruction httpSend:
+                        httpSend.Url = ReplaceKnownConstants(httpSend.Url, knownConstants);
+                        httpSend.Method = ReplaceKnownConstants(httpSend.Method, knownConstants);
+                        httpSend.Body = ReplaceKnownConstants(httpSend.Body, knownConstants);
+                        httpSend.TimeoutMs = ReplaceKnownConstants(httpSend.TimeoutMs, knownConstants);
+                        httpSend.Headers = ReplaceKnownConstants(httpSend.Headers, knownConstants);
+                        knownConstants.Remove(httpSend.Destination.Name);
+                        break;
+
+                    case IrHttpHeaderInstruction httpHeader:
+                        httpHeader.Headers = ReplaceKnownConstants(httpHeader.Headers, knownConstants);
+                        httpHeader.Name = ReplaceKnownConstants(httpHeader.Name, knownConstants);
+                        httpHeader.Value = ReplaceKnownConstants(httpHeader.Value, knownConstants);
+                        knownConstants.Remove(httpHeader.Destination.Name);
+                        break;
+
+                    case IrHttpQueryInstruction httpQuery:
+                        httpQuery.Url = ReplaceKnownConstants(httpQuery.Url, knownConstants);
+                        httpQuery.Key = ReplaceKnownConstants(httpQuery.Key, knownConstants);
+                        httpQuery.Value = ReplaceKnownConstants(httpQuery.Value, knownConstants);
+                        knownConstants.Remove(httpQuery.Destination.Name);
+                        break;
+
+                    case IrHttpUrlEncodeInstruction httpUrlEncode:
+                        httpUrlEncode.Value = ReplaceKnownConstants(httpUrlEncode.Value, knownConstants);
+                        knownConstants.Remove(httpUrlEncode.Destination.Name);
+                        break;
+
+                    case IrHttpClientOpenInstruction httpClientOpen:
+                        httpClientOpen.BaseUrl = ReplaceKnownConstants(httpClientOpen.BaseUrl, knownConstants);
+                        knownConstants.Remove(httpClientOpen.Destination.Name);
+                        break;
+
+                    case IrHttpClientConfigureInstruction httpClientConfigure:
+                        httpClientConfigure.Client = ReplaceKnownConstants(httpClientConfigure.Client, knownConstants);
+                        httpClientConfigure.TimeoutMs = ReplaceKnownConstants(httpClientConfigure.TimeoutMs, knownConstants);
+                        httpClientConfigure.AllowRedirects = ReplaceKnownConstants(httpClientConfigure.AllowRedirects, knownConstants);
+                        httpClientConfigure.MaxRedirects = ReplaceKnownConstants(httpClientConfigure.MaxRedirects, knownConstants);
+                        httpClientConfigure.UserAgent = ReplaceKnownConstants(httpClientConfigure.UserAgent, knownConstants);
+                        knownConstants.Remove(httpClientConfigure.Destination.Name);
+                        break;
+
+                    case IrHttpClientConfigureRetryInstruction httpClientConfigureRetry:
+                        httpClientConfigureRetry.Client = ReplaceKnownConstants(httpClientConfigureRetry.Client, knownConstants);
+                        httpClientConfigureRetry.MaxRetries = ReplaceKnownConstants(httpClientConfigureRetry.MaxRetries, knownConstants);
+                        httpClientConfigureRetry.RetryDelayMs = ReplaceKnownConstants(httpClientConfigureRetry.RetryDelayMs, knownConstants);
+                        knownConstants.Remove(httpClientConfigureRetry.Destination.Name);
+                        break;
+
+                    case IrHttpClientConfigureProxyInstruction httpClientConfigureProxy:
+                        httpClientConfigureProxy.Client = ReplaceKnownConstants(httpClientConfigureProxy.Client, knownConstants);
+                        httpClientConfigureProxy.ProxyUrl = ReplaceKnownConstants(httpClientConfigureProxy.ProxyUrl, knownConstants);
+                        knownConstants.Remove(httpClientConfigureProxy.Destination.Name);
+                        break;
+
+                    case IrHttpClientDefaultHeadersInstruction httpClientDefaultHeaders:
+                        httpClientDefaultHeaders.Client = ReplaceKnownConstants(httpClientDefaultHeaders.Client, knownConstants);
+                        httpClientDefaultHeaders.Headers = ReplaceKnownConstants(httpClientDefaultHeaders.Headers, knownConstants);
+                        knownConstants.Remove(httpClientDefaultHeaders.Destination.Name);
+                        break;
+
+                    case IrHttpClientSendInstruction httpClientSend:
+                        httpClientSend.Client = ReplaceKnownConstants(httpClientSend.Client, knownConstants);
+                        httpClientSend.PathOrUrl = ReplaceKnownConstants(httpClientSend.PathOrUrl, knownConstants);
+                        httpClientSend.Method = ReplaceKnownConstants(httpClientSend.Method, knownConstants);
+                        httpClientSend.Body = ReplaceKnownConstants(httpClientSend.Body, knownConstants);
+                        httpClientSend.Headers = ReplaceKnownConstants(httpClientSend.Headers, knownConstants);
+                        knownConstants.Remove(httpClientSend.Destination.Name);
+                        break;
+
+                    case IrHttpClientCloseInstruction httpClientClose:
+                        httpClientClose.Client = ReplaceKnownConstants(httpClientClose.Client, knownConstants);
+                        knownConstants.Remove(httpClientClose.Destination.Name);
+                        break;
+
+                    case IrHttpClientRequestsSentInstruction httpClientRequestsSent:
+                        httpClientRequestsSent.Client = ReplaceKnownConstants(httpClientRequestsSent.Client, knownConstants);
+                        knownConstants.Remove(httpClientRequestsSent.Destination.Name);
+                        break;
+
+                    case IrHttpClientRetriesUsedInstruction httpClientRetriesUsed:
+                        httpClientRetriesUsed.Client = ReplaceKnownConstants(httpClientRetriesUsed.Client, knownConstants);
+                        knownConstants.Remove(httpClientRetriesUsed.Destination.Name);
+                        break;
+
+                    case IrHttpLastBodyInstruction httpLastBody:
+                        knownConstants.Remove(httpLastBody.Destination.Name);
+                        break;
+
+                    case IrHttpLastStatusInstruction httpLastStatus:
+                        knownConstants.Remove(httpLastStatus.Destination.Name);
+                        break;
+
+                    case IrHttpLastErrorInstruction httpLastError:
+                        knownConstants.Remove(httpLastError.Destination.Name);
+                        break;
+
+                    case IrHttpLastReasonInstruction httpLastReason:
+                        knownConstants.Remove(httpLastReason.Destination.Name);
+                        break;
+
+                    case IrHttpLastContentTypeInstruction httpLastContentType:
+                        knownConstants.Remove(httpLastContentType.Destination.Name);
+                        break;
+
+                    case IrHttpLastHeadersInstruction httpLastHeaders:
+                        knownConstants.Remove(httpLastHeaders.Destination.Name);
+                        break;
+
+                    case IrHttpLastHeaderInstruction httpLastHeader:
+                        httpLastHeader.HeaderName = ReplaceKnownConstants(httpLastHeader.HeaderName, knownConstants);
+                        knownConstants.Remove(httpLastHeader.Destination.Name);
+                        break;
+
                     case IrThrowInstruction throwInstruction:
                         if (throwInstruction.Error is not null)
                         {

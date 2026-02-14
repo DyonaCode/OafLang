@@ -28,6 +28,8 @@ public static class TypeCheckerTests
             ("supports_public_class_declaration_with_modifiers", SupportsPublicClassDeclarationWithModifiers),
             ("supports_if_comma_separated_conditions", SupportsIfCommaSeparatedConditions),
             ("supports_jot_statement", SupportsJotStatement),
+            ("supports_http_intrinsic_constructors", SupportsHttpIntrinsicConstructors),
+            ("rejects_http_intrinsic_argument_mismatch", RejectsHttpIntrinsicArgumentMismatch),
             ("supports_array_literals_and_indexing", SupportsArrayLiteralsAndIndexing),
             ("rejects_non_integer_array_index", RejectsNonIntegerArrayIndex),
             ("supports_counted_paralloop_with_indexed_writes", SupportsCountedParalloopWithIndexedWrites),
@@ -171,6 +173,20 @@ public static class TypeCheckerTests
         const string source = "flux x = 3; Jot(x); Jot(\"done\"); return x;";
         var diagnostics = CompileAndTypeCheck(source);
         TestAssertions.False(diagnostics.HasErrors, "Expected Jot statement to type-check.");
+    }
+
+    private static void SupportsHttpIntrinsicConstructors()
+    {
+        const string source = "enum Method => Get, Post; flux body = HttpGet[\"http://localhost\"]; flux sent = HttpSend[\"http://localhost\", Method.Post, \"x=1\", 2000, \"Accept: application/json\\nX-Trace: abc123\"]; flux status = HttpLastStatus[]; flux error = HttpLastError[]; flux reason = HttpLastReason[]; flux ct = HttpLastContentType[]; flux hs = HttpLastHeaders[]; flux server = HttpLastHeader[\"Server\"]; flux hb = HttpHeader[\"\", \"Accept\", \"application/json\"]; flux q = HttpQuery[\"http://localhost/search\", \"q\", \"bakery in berlin\"]; flux enc = HttpUrlEncode[\"bakery in berlin\"]; flux client = HttpClientOpen[\"http://localhost\"]; flux cfg = HttpClientConfigure[client, 8000, true, 5, \"oaf-http/1.0\"]; flux retryCfg = HttpClientConfigureRetry[client, 3, 100]; flux proxyCfg = HttpClientConfigureProxy[client, \"\"]; flux defs = HttpClientDefaultHeaders[client, \"Authorization: Bearer t\"]; flux resp = HttpClientSend[client, \"/search\", Method.Get, \"\", \"Accept: application/json\"]; flux sentCount = HttpClientRequestsSent[client]; flux retryCount = HttpClientRetriesUsed[client]; flux closed = HttpClientClose[client]; flux lb = HttpLastBody[]; return status + cfg + retryCfg + proxyCfg + defs + sentCount + retryCount + closed;";
+        var diagnostics = CompileAndTypeCheck(source);
+        TestAssertions.False(diagnostics.HasErrors, "Expected HTTP intrinsic constructors to type-check.");
+    }
+
+    private static void RejectsHttpIntrinsicArgumentMismatch()
+    {
+        const string source = "flux body = HttpGet[]; flux sent = HttpSend[\"http://localhost\", true, 42, \"slow\", 123]; flux status = HttpLastStatus[1]; flux error = HttpLastError[\"x\"]; flux reason = HttpLastReason[1]; flux ct = HttpLastContentType[1]; flux hs = HttpLastHeaders[1]; flux server = HttpLastHeader[]; flux hb = HttpHeader[\"\", 1, \"x\"]; flux q = HttpQuery[1, \"k\", true]; flux enc = HttpUrlEncode[5]; flux client = HttpClientOpen[123]; flux cfg = HttpClientConfigure[\"x\", \"slow\", 1, false, 5]; flux retryCfg = HttpClientConfigureRetry[client, \"three\", false]; flux proxyCfg = HttpClientConfigureProxy[client, 9]; flux defs = HttpClientDefaultHeaders[client, 7]; flux resp = HttpClientSend[client, 10, true, 1, 2]; flux sentCount = HttpClientRequestsSent[]; flux retryCount = HttpClientRetriesUsed[\"x\"]; flux closed = HttpClientClose[\"x\"]; flux lb = HttpLastBody[1]; return 0;";
+        var diagnostics = CompileAndTypeCheck(source);
+        TestAssertions.True(diagnostics.HasErrors, "Expected HTTP intrinsic arity mismatch to report errors.");
     }
 
     private static void SupportsArrayLiteralsAndIndexing()

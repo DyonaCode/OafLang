@@ -13,4 +13,10 @@
     <Version>0.1.0</Version>
     <PackageOutputPath>$(MSBuildProjectDirectory)/dist/sdk</PackageOutputPath>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="development/**/*.cs" />
+    <EmbeddedResource Remove="development/**/*" />
+    <None Remove="development/**/*" />
+  </ItemGroup>
 </Project>

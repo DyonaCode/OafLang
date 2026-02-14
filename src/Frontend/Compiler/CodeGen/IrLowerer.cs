@@ -497,6 +497,11 @@ public sealed class IrLowerer
             }
 
             case ConstructorExpressionSyntax constructor:
+                if (TryLowerIntrinsicConstructorExpression(constructor, out var intrinsicResult))
+                {
+                    return intrinsicResult;
+                }
+
                 foreach (var argument in constructor.Arguments)
                 {
                     _ = LowerExpression(argument);
@@ -573,6 +578,7 @@ public sealed class IrLowerer
         {
             LiteralExpressionSyntax literal => InferTypeFromLiteral(literal.Value),
             NameExpressionSyntax name when ResolveVariableWithContext(name.Identifier) is { } scopedVariable => scopedVariable.Type,
+            ConstructorExpressionSyntax constructor when TryGetIntrinsicConstructorReturnType(constructor.TargetType.Name, out var intrinsicType) => intrinsicType,
             ArrayLiteralExpressionSyntax => IrType.Unknown,
             IndexExpressionSyntax => IrType.Unknown,
             CastExpressionSyntax cast => IrType.FromTypeName(cast.TargetType.Name),
@@ -584,6 +590,729 @@ public sealed class IrLowerer
             ParenthesizedExpressionSyntax parenthesized => InferTypeFromExpression(parenthesized.Expression),
             _ => IrType.Unknown
         };
+    }
+
+    private bool TryLowerIntrinsicConstructorExpression(
+        ConstructorExpressionSyntax constructorExpression,
+        out IrValue value)
+    {
+        value = new IrConstantValue(IrType.Unknown, null);
+
+        switch (constructorExpression.TargetType.Name)
+        {
+            case "HttpGet":
+            {
+                IrValue urlValue;
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    urlValue = LowerExpression(constructorExpression.Arguments[0]);
+                    for (var i = 1; i < constructorExpression.Arguments.Count; i++)
+                    {
+                        _ = LowerExpression(constructorExpression.Arguments[i]);
+                    }
+                }
+                else
+                {
+                    urlValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpGetInstruction(destination, urlValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpSend":
+            {
+                IrValue urlValue;
+                IrValue methodValue;
+                IrValue bodyValue;
+                IrValue timeoutValue;
+                IrValue headersValue;
+
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    urlValue = LowerExpression(constructorExpression.Arguments[0]);
+                }
+                else
+                {
+                    urlValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                if (constructorExpression.Arguments.Count > 1)
+                {
+                    methodValue = LowerExpression(constructorExpression.Arguments[1]);
+                }
+                else
+                {
+                    methodValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                if (constructorExpression.Arguments.Count > 2)
+                {
+                    bodyValue = LowerExpression(constructorExpression.Arguments[2]);
+                }
+                else
+                {
+                    bodyValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                if (constructorExpression.Arguments.Count > 3)
+                {
+                    timeoutValue = LowerExpression(constructorExpression.Arguments[3]);
+                }
+                else
+                {
+                    timeoutValue = new IrConstantValue(IrType.Int, 30_000L);
+                }
+
+                if (constructorExpression.Arguments.Count > 4)
+                {
+                    headersValue = LowerExpression(constructorExpression.Arguments[4]);
+                }
+                else
+                {
+                    headersValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                for (var i = 5; i < constructorExpression.Arguments.Count; i++)
+                {
+                    _ = LowerExpression(constructorExpression.Arguments[i]);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpSendInstruction(destination, urlValue, methodValue, bodyValue, timeoutValue, headersValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpHeader":
+            {
+                IrValue headersValue;
+                IrValue nameValue;
+                IrValue headerValue;
+
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    headersValue = LowerExpression(constructorExpression.Arguments[0]);
+                }
+                else
+                {
+                    headersValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                if (constructorExpression.Arguments.Count > 1)
+                {
+                    nameValue = LowerExpression(constructorExpression.Arguments[1]);
+                }
+                else
+                {
+                    nameValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                if (constructorExpression.Arguments.Count > 2)
+                {
+                    headerValue = LowerExpression(constructorExpression.Arguments[2]);
+                }
+                else
+                {
+                    headerValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                for (var i = 3; i < constructorExpression.Arguments.Count; i++)
+                {
+                    _ = LowerExpression(constructorExpression.Arguments[i]);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpHeaderInstruction(destination, headersValue, nameValue, headerValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpQuery":
+            {
+                IrValue urlValue;
+                IrValue keyValue;
+                IrValue queryValue;
+
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    urlValue = LowerExpression(constructorExpression.Arguments[0]);
+                }
+                else
+                {
+                    urlValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                if (constructorExpression.Arguments.Count > 1)
+                {
+                    keyValue = LowerExpression(constructorExpression.Arguments[1]);
+                }
+                else
+                {
+                    keyValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                if (constructorExpression.Arguments.Count > 2)
+                {
+                    queryValue = LowerExpression(constructorExpression.Arguments[2]);
+                }
+                else
+                {
+                    queryValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                for (var i = 3; i < constructorExpression.Arguments.Count; i++)
+                {
+                    _ = LowerExpression(constructorExpression.Arguments[i]);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpQueryInstruction(destination, urlValue, keyValue, queryValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpUrlEncode":
+            {
+                IrValue encodeValue;
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    encodeValue = LowerExpression(constructorExpression.Arguments[0]);
+                    for (var i = 1; i < constructorExpression.Arguments.Count; i++)
+                    {
+                        _ = LowerExpression(constructorExpression.Arguments[i]);
+                    }
+                }
+                else
+                {
+                    encodeValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpUrlEncodeInstruction(destination, encodeValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpClientOpen":
+            {
+                IrValue baseUrlValue;
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    baseUrlValue = LowerExpression(constructorExpression.Arguments[0]);
+                    for (var i = 1; i < constructorExpression.Arguments.Count; i++)
+                    {
+                        _ = LowerExpression(constructorExpression.Arguments[i]);
+                    }
+                }
+                else
+                {
+                    baseUrlValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                var destination = NewTemporary(IrType.Int);
+                Emit(new IrHttpClientOpenInstruction(destination, baseUrlValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpClientConfigure":
+            {
+                IrValue clientValue;
+                IrValue timeoutValue;
+                IrValue allowRedirectsValue;
+                IrValue maxRedirectsValue;
+                IrValue userAgentValue;
+
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    clientValue = LowerExpression(constructorExpression.Arguments[0]);
+                }
+                else
+                {
+                    clientValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                if (constructorExpression.Arguments.Count > 1)
+                {
+                    timeoutValue = LowerExpression(constructorExpression.Arguments[1]);
+                }
+                else
+                {
+                    timeoutValue = new IrConstantValue(IrType.Int, 30_000L);
+                }
+
+                if (constructorExpression.Arguments.Count > 2)
+                {
+                    allowRedirectsValue = LowerExpression(constructorExpression.Arguments[2]);
+                }
+                else
+                {
+                    allowRedirectsValue = new IrConstantValue(IrType.Bool, true);
+                }
+
+                if (constructorExpression.Arguments.Count > 3)
+                {
+                    maxRedirectsValue = LowerExpression(constructorExpression.Arguments[3]);
+                }
+                else
+                {
+                    maxRedirectsValue = new IrConstantValue(IrType.Int, 10L);
+                }
+
+                if (constructorExpression.Arguments.Count > 4)
+                {
+                    userAgentValue = LowerExpression(constructorExpression.Arguments[4]);
+                }
+                else
+                {
+                    userAgentValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                for (var i = 5; i < constructorExpression.Arguments.Count; i++)
+                {
+                    _ = LowerExpression(constructorExpression.Arguments[i]);
+                }
+
+                var destination = NewTemporary(IrType.Int);
+                Emit(new IrHttpClientConfigureInstruction(
+                    destination,
+                    clientValue,
+                    timeoutValue,
+                    allowRedirectsValue,
+                    maxRedirectsValue,
+                    userAgentValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpClientConfigureRetry":
+            {
+                IrValue clientValue;
+                IrValue maxRetriesValue;
+                IrValue retryDelayValue;
+
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    clientValue = LowerExpression(constructorExpression.Arguments[0]);
+                }
+                else
+                {
+                    clientValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                if (constructorExpression.Arguments.Count > 1)
+                {
+                    maxRetriesValue = LowerExpression(constructorExpression.Arguments[1]);
+                }
+                else
+                {
+                    maxRetriesValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                if (constructorExpression.Arguments.Count > 2)
+                {
+                    retryDelayValue = LowerExpression(constructorExpression.Arguments[2]);
+                }
+                else
+                {
+                    retryDelayValue = new IrConstantValue(IrType.Int, 200L);
+                }
+
+                for (var i = 3; i < constructorExpression.Arguments.Count; i++)
+                {
+                    _ = LowerExpression(constructorExpression.Arguments[i]);
+                }
+
+                var destination = NewTemporary(IrType.Int);
+                Emit(new IrHttpClientConfigureRetryInstruction(
+                    destination,
+                    clientValue,
+                    maxRetriesValue,
+                    retryDelayValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpClientConfigureProxy":
+            {
+                IrValue clientValue;
+                IrValue proxyUrlValue;
+
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    clientValue = LowerExpression(constructorExpression.Arguments[0]);
+                }
+                else
+                {
+                    clientValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                if (constructorExpression.Arguments.Count > 1)
+                {
+                    proxyUrlValue = LowerExpression(constructorExpression.Arguments[1]);
+                }
+                else
+                {
+                    proxyUrlValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                for (var i = 2; i < constructorExpression.Arguments.Count; i++)
+                {
+                    _ = LowerExpression(constructorExpression.Arguments[i]);
+                }
+
+                var destination = NewTemporary(IrType.Int);
+                Emit(new IrHttpClientConfigureProxyInstruction(
+                    destination,
+                    clientValue,
+                    proxyUrlValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpClientDefaultHeaders":
+            {
+                IrValue clientValue;
+                IrValue headersValue;
+
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    clientValue = LowerExpression(constructorExpression.Arguments[0]);
+                }
+                else
+                {
+                    clientValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                if (constructorExpression.Arguments.Count > 1)
+                {
+                    headersValue = LowerExpression(constructorExpression.Arguments[1]);
+                }
+                else
+                {
+                    headersValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                for (var i = 2; i < constructorExpression.Arguments.Count; i++)
+                {
+                    _ = LowerExpression(constructorExpression.Arguments[i]);
+                }
+
+                var destination = NewTemporary(IrType.Int);
+                Emit(new IrHttpClientDefaultHeadersInstruction(destination, clientValue, headersValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpClientSend":
+            {
+                IrValue clientValue;
+                IrValue pathOrUrlValue;
+                IrValue methodValue;
+                IrValue bodyValue;
+                IrValue headersValue;
+
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    clientValue = LowerExpression(constructorExpression.Arguments[0]);
+                }
+                else
+                {
+                    clientValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                if (constructorExpression.Arguments.Count > 1)
+                {
+                    pathOrUrlValue = LowerExpression(constructorExpression.Arguments[1]);
+                }
+                else
+                {
+                    pathOrUrlValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                if (constructorExpression.Arguments.Count > 2)
+                {
+                    methodValue = LowerExpression(constructorExpression.Arguments[2]);
+                }
+                else
+                {
+                    methodValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                if (constructorExpression.Arguments.Count > 3)
+                {
+                    bodyValue = LowerExpression(constructorExpression.Arguments[3]);
+                }
+                else
+                {
+                    bodyValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                if (constructorExpression.Arguments.Count > 4)
+                {
+                    headersValue = LowerExpression(constructorExpression.Arguments[4]);
+                }
+                else
+                {
+                    headersValue = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                for (var i = 5; i < constructorExpression.Arguments.Count; i++)
+                {
+                    _ = LowerExpression(constructorExpression.Arguments[i]);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpClientSendInstruction(destination, clientValue, pathOrUrlValue, methodValue, bodyValue, headersValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpClientClose":
+            {
+                IrValue clientValue;
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    clientValue = LowerExpression(constructorExpression.Arguments[0]);
+                    for (var i = 1; i < constructorExpression.Arguments.Count; i++)
+                    {
+                        _ = LowerExpression(constructorExpression.Arguments[i]);
+                    }
+                }
+                else
+                {
+                    clientValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                var destination = NewTemporary(IrType.Int);
+                Emit(new IrHttpClientCloseInstruction(destination, clientValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpClientRequestsSent":
+            {
+                IrValue clientValue;
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    clientValue = LowerExpression(constructorExpression.Arguments[0]);
+                    for (var i = 1; i < constructorExpression.Arguments.Count; i++)
+                    {
+                        _ = LowerExpression(constructorExpression.Arguments[i]);
+                    }
+                }
+                else
+                {
+                    clientValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                var destination = NewTemporary(IrType.Int);
+                Emit(new IrHttpClientRequestsSentInstruction(destination, clientValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpClientRetriesUsed":
+            {
+                IrValue clientValue;
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    clientValue = LowerExpression(constructorExpression.Arguments[0]);
+                    for (var i = 1; i < constructorExpression.Arguments.Count; i++)
+                    {
+                        _ = LowerExpression(constructorExpression.Arguments[i]);
+                    }
+                }
+                else
+                {
+                    clientValue = new IrConstantValue(IrType.Int, 0L);
+                }
+
+                var destination = NewTemporary(IrType.Int);
+                Emit(new IrHttpClientRetriesUsedInstruction(destination, clientValue));
+                value = destination;
+                return true;
+            }
+
+            case "HttpLastBody":
+            {
+                foreach (var argument in constructorExpression.Arguments)
+                {
+                    _ = LowerExpression(argument);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpLastBodyInstruction(destination));
+                value = destination;
+                return true;
+            }
+
+            case "HttpLastStatus":
+            {
+                foreach (var argument in constructorExpression.Arguments)
+                {
+                    _ = LowerExpression(argument);
+                }
+
+                var destination = NewTemporary(IrType.Int);
+                Emit(new IrHttpLastStatusInstruction(destination));
+                value = destination;
+                return true;
+            }
+
+            case "HttpLastError":
+            {
+                foreach (var argument in constructorExpression.Arguments)
+                {
+                    _ = LowerExpression(argument);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpLastErrorInstruction(destination));
+                value = destination;
+                return true;
+            }
+
+            case "HttpLastReason":
+            {
+                foreach (var argument in constructorExpression.Arguments)
+                {
+                    _ = LowerExpression(argument);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpLastReasonInstruction(destination));
+                value = destination;
+                return true;
+            }
+
+            case "HttpLastContentType":
+            {
+                foreach (var argument in constructorExpression.Arguments)
+                {
+                    _ = LowerExpression(argument);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpLastContentTypeInstruction(destination));
+                value = destination;
+                return true;
+            }
+
+            case "HttpLastHeaders":
+            {
+                foreach (var argument in constructorExpression.Arguments)
+                {
+                    _ = LowerExpression(argument);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpLastHeadersInstruction(destination));
+                value = destination;
+                return true;
+            }
+
+            case "HttpLastHeader":
+            {
+                IrValue headerName;
+                if (constructorExpression.Arguments.Count > 0)
+                {
+                    headerName = LowerExpression(constructorExpression.Arguments[0]);
+                    for (var i = 1; i < constructorExpression.Arguments.Count; i++)
+                    {
+                        _ = LowerExpression(constructorExpression.Arguments[i]);
+                    }
+                }
+                else
+                {
+                    headerName = new IrConstantValue(IrType.String, string.Empty);
+                }
+
+                var destination = NewTemporary(IrType.String);
+                Emit(new IrHttpLastHeaderInstruction(destination, headerName));
+                value = destination;
+                return true;
+            }
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryGetIntrinsicConstructorReturnType(string constructorName, out IrType type)
+    {
+        switch (constructorName)
+        {
+            case "HttpGet":
+                type = IrType.String;
+                return true;
+            case "HttpSend":
+                type = IrType.String;
+                return true;
+            case "HttpHeader":
+                type = IrType.String;
+                return true;
+            case "HttpQuery":
+                type = IrType.String;
+                return true;
+            case "HttpUrlEncode":
+                type = IrType.String;
+                return true;
+            case "HttpClientOpen":
+                type = IrType.Int;
+                return true;
+            case "HttpClientConfigure":
+                type = IrType.Int;
+                return true;
+            case "HttpClientConfigureRetry":
+                type = IrType.Int;
+                return true;
+            case "HttpClientConfigureProxy":
+                type = IrType.Int;
+                return true;
+            case "HttpClientDefaultHeaders":
+                type = IrType.Int;
+                return true;
+            case "HttpClientSend":
+                type = IrType.String;
+                return true;
+            case "HttpClientClose":
+                type = IrType.Int;
+                return true;
+            case "HttpClientRequestsSent":
+                type = IrType.Int;
+                return true;
+            case "HttpClientRetriesUsed":
+                type = IrType.Int;
+                return true;
+            case "HttpLastBody":
+                type = IrType.String;
+                return true;
+            case "HttpLastStatus":
+                type = IrType.Int;
+                return true;
+            case "HttpLastError":
+                type = IrType.String;
+                return true;
+            case "HttpLastReason":
+                type = IrType.String;
+                return true;
+            case "HttpLastContentType":
+                type = IrType.String;
+                return true;
+            case "HttpLastHeaders":
+                type = IrType.String;
+                return true;
+            case "HttpLastHeader":
+                type = IrType.String;
+                return true;
+            default:
+                type = IrType.Unknown;
+                return false;
+        }
     }
 
     private static IrType InferTypeFromLiteral(object? value)

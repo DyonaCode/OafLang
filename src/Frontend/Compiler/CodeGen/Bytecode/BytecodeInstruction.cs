@@ -16,6 +16,27 @@ public enum BytecodeOpCode
     JumpIfTrue,
     JumpIfFalse,
     Print,
+    HttpGet,
+    HttpSend,
+    HttpHeader,
+    HttpQuery,
+    HttpUrlEncode,
+    HttpClientOpen,
+    HttpClientConfigure,
+    HttpClientConfigureRetry,
+    HttpClientConfigureProxy,
+    HttpClientDefaultHeaders,
+    HttpClientSend,
+    HttpClientClose,
+    HttpClientRequestsSent,
+    HttpClientRetriesUsed,
+    HttpLastBody,
+    HttpLastStatus,
+    HttpLastError,
+    HttpLastReason,
+    HttpLastContentType,
+    HttpLastHeaders,
+    HttpLastHeader,
     Throw,
     ArrayCreate,
     ArrayGet,
@@ -64,13 +85,15 @@ public enum BytecodeBinaryOperator
 
 public sealed class BytecodeInstruction
 {
-    public BytecodeInstruction(BytecodeOpCode opCode, int a = 0, int b = 0, int c = 0, int d = 0)
+    public BytecodeInstruction(BytecodeOpCode opCode, int a = 0, int b = 0, int c = 0, int d = 0, int e = 0, int f = 0)
     {
         OpCode = opCode;
         A = a;
         B = b;
         C = c;
         D = d;
+        E = e;
+        F = f;
     }
 
     public BytecodeOpCode OpCode { get; }
@@ -82,4 +105,8 @@ public sealed class BytecodeInstruction
     public int C { get; set; }
 
     public int D { get; set; }
+
+    public int E { get; set; }
+
+    public int F { get; set; }
 }
